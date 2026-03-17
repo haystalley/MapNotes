@@ -46,7 +46,7 @@ function createMarkerIcon(color: string, iconType: string): L.DivIcon {
 interface MapViewProps {
   elements: MapElement[];
   activeTool: Tool;
-  mapLayer: "osm" | "satellite";
+  mapLayer: "osm" | "satellite" | "topo";
   darkMode: boolean;
   onElementAdd: (element: MapElement) => void;
   onElementSelect: (element: MapElement | null) => void;
@@ -61,6 +61,8 @@ const OSM_URL = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
 const OSM_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 const SAT_URL = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
 const SAT_ATTRIBUTION = "Tiles &copy; Esri";
+const TOPO_URL = "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png";
+const TOPO_ATTRIBUTION = 'Map data: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, <a href="http://viewfinderpanoramas.org">SRTM</a> | Map style: &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/">CC-BY-SA</a>)';
 
 export default function MapView({
   elements,
@@ -129,9 +131,10 @@ export default function MapView({
     if (!mapRef.current || !tileLayerRef.current) return;
     const map = mapRef.current;
     map.removeLayer(tileLayerRef.current);
-    const url = mapLayer === "satellite" ? SAT_URL : OSM_URL;
-    const attribution = mapLayer === "satellite" ? SAT_ATTRIBUTION : OSM_ATTRIBUTION;
-    tileLayerRef.current = L.tileLayer(url, { attribution, maxZoom: 19 }).addTo(map);
+    let url = OSM_URL, attribution = OSM_ATTRIBUTION;
+    if (mapLayer === "satellite") { url = SAT_URL; attribution = SAT_ATTRIBUTION; }
+    else if (mapLayer === "topo") { url = TOPO_URL; attribution = TOPO_ATTRIBUTION; }
+    tileLayerRef.current = L.tileLayer(url, { attribution, maxZoom: 17 }).addTo(map);
   }, [mapLayer]);
 
   // ---------- Dark mode ----------

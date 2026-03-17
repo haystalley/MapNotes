@@ -1,8 +1,8 @@
-import React from "react";
+import React, { useRef } from "react";
 import {
   MapPin, Pentagon, Square, Circle, MousePointer,
   Search, Upload, FolderOpen, Trash2,
-  Undo2, Redo2, Ruler, Map, Layers
+  Undo2, Redo2, Ruler, Layers
 } from "lucide-react";
 
 export type Tool =
@@ -13,7 +13,7 @@ export type Tool =
   | "circle"
   | "measure";
 
-export type MapMode = "osm" | "satellite" | "dark";
+export type MapMode = "osm" | "satellite" | "topo" | "dark";
 
 export type SearchResult = {
   lat: number;
@@ -41,6 +41,8 @@ interface ToolbarProps {
   onResultSelect: (result: SearchResult) => void;
   onResultsDismiss: () => void;
   elementCount: number;
+  onProjectsToggle: () => void;
+  projectsBtnRef: React.RefObject<HTMLButtonElement | null>;
 }
 
 const TOOLS: { id: Tool; icon: React.ReactNode; label: string }[] = [
@@ -52,11 +54,12 @@ const TOOLS: { id: Tool; icon: React.ReactNode; label: string }[] = [
   { id: "measure", icon: <Ruler size={16} />, label: "Measure Distance (E)" },
 ];
 
-const LAYER_CYCLE: MapMode[] = ["osm", "satellite", "dark"];
+const LAYER_CYCLE: MapMode[] = ["osm", "satellite", "topo", "dark"];
 
 const LAYER_TITLES: Record<MapMode, string> = {
   osm:       "Street Map — click for Satellite",
-  satellite: "Satellite — click for Dark Mode",
+  satellite: "Satellite — click for Topographic",
+  topo:      "Topographic — click for Dark Mode",
   dark:      "Dark Mode — click for Street Map",
 };
 
@@ -80,14 +83,26 @@ export default function Toolbar({
   onResultSelect,
   onResultsDismiss,
   elementCount,
+  onProjectsToggle,
+  projectsBtnRef,
 }: ToolbarProps) {
   const hasDropdown = searchResults.length > 0 || searchError !== null;
 
   return (
     <div className="toolbar">
-      {/* Logo */}
-      <div className="toolbar-logo">
-        <Map size={18} className="toolbar-logo-icon" />
+      {/* Logo + Projects button */}
+      <div className="toolbar-logo-area">
+        <button
+          ref={projectsBtnRef}
+          className="toolbar-logo-btn"
+          onClick={onProjectsToggle}
+          title="My Maps"
+        >
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 2C7.589 2 4 5.589 4 10c0 5.25 7.2 12.35 7.51 12.65a.7.7 0 0 0 .98 0C12.8 22.35 20 15.25 20 10c0-4.411-3.589-8-8-8z" fill="#2563eb"/>
+            <circle cx="12" cy="10" r="3" fill="white"/>
+          </svg>
+        </button>
         <span className="toolbar-logo-text">MapNotes</span>
       </div>
 

@@ -3,12 +3,22 @@ import MapView from "@/components/MapView";
 import Toolbar, { Tool, MapMode, SearchResult } from "@/components/Toolbar";
 import ElementPopup from "@/components/ElementPopup";
 import MeasurePanel from "@/components/MeasurePanel";
+import ProjectsPanel from "@/components/ProjectsPanel";
 import { useMapData } from "@/hooks/useMapData";
 import { MapElement } from "@/lib/db";
-import { saveSetting, getSetting } from "@/lib/db";
+import {
+  saveSetting, getSetting,
+  getAllImages, saveImage,
+  saveProject, deleteProject,
+  clearAllElements, saveElement,
+  ProjectEntry,
+} from "@/lib/db";
+import { generateThumbnail } from "@/lib/thumbnail";
+
+const VISITOR_KEY = "mapnotes_visitor_initialized";
 
 export default function MapPage() {
-  const { elements, loading, addElement, updateElement, removeElement, clearAll, exportGeoJSON, importGeoJSON } = useMapData();
+  const { elements, loading, addElement, updateElement, removeElement, clearAll, exportGeoJSON, importGeoJSON, setElements } = useMapData();
   const [activeTool, setActiveTool] = useState<Tool>("select");
   const [mapMode, setMapMode] = useState<MapMode>("osm");
   const [selectedElement, setSelectedElement] = useState<MapElement | null>(null);
@@ -24,6 +34,16 @@ export default function MapPage() {
   const [history, setHistory] = useState<MapElement[][]>([]);
   const [future, setFuture] = useState<MapElement[][]>([]);
   const importInputRef = useRef<HTMLInputElement>(null);
+
+  const [projectsOpen, setProjectsOpen] = useState(false);
+  const projectsBtnRef = useRef<HTMLButtonElement>(null);
+
+  // ---- Session / first-visit detection ----
+  useEffect(() => {
+    if (!localStorage.getItem(VISITOR_KEY)) {
+      localStorage.setItem(VISITOR_KEY, "1");
+    }
+  }, []);
 
   // Load saved map mode
   useEffect(() => {
@@ -120,6 +140,7 @@ export default function MapPage() {
         setSelectedElement(null);
         setSearchResults([]);
         setSearchError(null);
+        setProjectsOpen(false);
       }
       if ((e.ctrlKey || e.metaKey) && e.key === "z") { e.preventDefault(); handleUndo(); }
       if ((e.ctrlKey || e.metaKey) && (e.key === "y" || (e.shiftKey && e.key === "z"))) { e.preventDefault(); handleRedo(); }
@@ -148,13 +169,11 @@ export default function MapPage() {
       }
 
       if (data.length === 1) {
-        // Single result — zoom immediately
         const r = data[0];
         const loc = { lat: parseFloat(r.lat), lng: parseFloat(r.lon) };
         setSearchLocation(loc);
         setSearchQuery("");
       } else {
-        // Multiple results — show dropdown
         setSearchResults(
           data.map((r: { lat: string; lon: string; display_name: string }) => ({
             lat: parseFloat(r.lat),
@@ -206,8 +225,49 @@ export default function MapPage() {
     if (activeTool !== "measure") setMeasurePoints([]);
   }, [activeTool]);
 
+  // ---- Project Management ----
+  const handleSaveProject = useCallback(async (name: string) => {
+    const images = await getAllImages();
+    const elementImageIds = new Set(elements.flatMap((el) => el.imageIds));
+    const relevantImages = images.filter((img) => elementImageIds.has(img.id));
+    const thumbnail = generateThumbnail(elements);
+    const project: ProjectEntry = {
+      id: `proj-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      name,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      mapMode,
+      elements: [...elements],
+      images: relevantImages,
+      thumbnail,
+    };
+    await saveProject(project);
+  }, [elements, mapMode]);
+
+  const handleLoadProject = useCallback(async (project: ProjectEntry) => {
+    await clearAllElements();
+    for (const el of project.elements) {
+      await saveElement(el);
+    }
+    for (const img of project.images) {
+      await saveImage(img);
+    }
+    setElements(project.elements);
+    handleMapModeChange(project.mapMode as MapMode);
+    setSelectedElement(null);
+    setHistory([]);
+    setFuture([]);
+    setCanUndo(false);
+    setCanRedo(false);
+  }, [handleMapModeChange, setElements]);
+
+  const handleDeleteProject = useCallback(async (id: string) => {
+    await deleteProject(id);
+  }, []);
+
   const isDark = mapMode === "dark";
-  const mapLayer = mapMode === "satellite" ? "satellite" : "osm";
+  const mapLayer: "osm" | "satellite" | "topo" =
+    mapMode === "satellite" ? "satellite" : mapMode === "topo" ? "topo" : "osm";
 
   if (loading) {
     return (
@@ -220,33 +280,46 @@ export default function MapPage() {
 
   return (
     <div className={`app-root ${isDark ? "dark" : ""}`}>
-      <Toolbar
-        activeTool={activeTool}
-        onToolChange={(tool) => {
-          setActiveTool(tool);
-          if (tool !== "select") setSelectedElement(null);
-        }}
-        mapMode={mapMode}
-        onMapModeChange={handleMapModeChange}
-        onExport={exportGeoJSON}
-        onImport={() => importInputRef.current?.click()}
-        onClearAll={handleClearAll}
-        onUndo={handleUndo}
-        onRedo={handleRedo}
-        canUndo={canUndo}
-        canRedo={canRedo}
-        searchQuery={searchQuery}
-        onSearchChange={(q) => {
-          setSearchQuery(q);
-          if (!q) { setSearchResults([]); setSearchError(null); }
-        }}
-        onSearchSubmit={handleSearch}
-        searchResults={searchResults}
-        searchError={searchError}
-        onResultSelect={handleResultSelect}
-        onResultsDismiss={handleResultsDismiss}
-        elementCount={elements.length}
-      />
+      <div style={{ position: "relative" }}>
+        <Toolbar
+          activeTool={activeTool}
+          onToolChange={(tool) => {
+            setActiveTool(tool);
+            if (tool !== "select") setSelectedElement(null);
+          }}
+          mapMode={mapMode}
+          onMapModeChange={handleMapModeChange}
+          onExport={exportGeoJSON}
+          onImport={() => importInputRef.current?.click()}
+          onClearAll={handleClearAll}
+          onUndo={handleUndo}
+          onRedo={handleRedo}
+          canUndo={canUndo}
+          canRedo={canRedo}
+          searchQuery={searchQuery}
+          onSearchChange={(q) => {
+            setSearchQuery(q);
+            if (!q) { setSearchResults([]); setSearchError(null); }
+          }}
+          onSearchSubmit={handleSearch}
+          searchResults={searchResults}
+          searchError={searchError}
+          onResultSelect={handleResultSelect}
+          onResultsDismiss={handleResultsDismiss}
+          elementCount={elements.length}
+          onProjectsToggle={() => setProjectsOpen((v) => !v)}
+          projectsBtnRef={projectsBtnRef}
+        />
+
+        <ProjectsPanel
+          open={projectsOpen}
+          onClose={() => setProjectsOpen(false)}
+          onSave={handleSaveProject}
+          onLoad={handleLoadProject}
+          onDelete={handleDeleteProject}
+          triggerRef={projectsBtnRef}
+        />
+      </div>
 
       <input
         ref={importInputRef}

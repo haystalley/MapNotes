@@ -42,6 +42,17 @@ export interface StoredImage {
   createdAt: number;
 }
 
+export interface ProjectEntry {
+  id: string;
+  name: string;
+  createdAt: number;
+  updatedAt: number;
+  mapMode: string;
+  elements: MapElement[];
+  images: StoredImage[];
+  thumbnail: string;
+}
+
 interface MapAppDB extends DBSchema {
   elements: {
     key: string;
@@ -55,17 +66,26 @@ interface MapAppDB extends DBSchema {
     key: string;
     value: unknown;
   };
+  projects: {
+    key: string;
+    value: ProjectEntry;
+  };
 }
 
 let dbInstance: IDBPDatabase<MapAppDB> | null = null;
 
 export async function getDb(): Promise<IDBPDatabase<MapAppDB>> {
   if (!dbInstance) {
-    dbInstance = await openDB<MapAppDB>("map-app", 1, {
-      upgrade(db) {
-        db.createObjectStore("elements", { keyPath: "id" });
-        db.createObjectStore("images", { keyPath: "id" });
-        db.createObjectStore("settings");
+    dbInstance = await openDB<MapAppDB>("map-app", 2, {
+      upgrade(db, oldVersion) {
+        if (oldVersion < 1) {
+          db.createObjectStore("elements", { keyPath: "id" });
+          db.createObjectStore("images", { keyPath: "id" });
+          db.createObjectStore("settings");
+        }
+        if (oldVersion < 2) {
+          db.createObjectStore("projects", { keyPath: "id" });
+        }
       },
     });
   }
@@ -102,6 +122,11 @@ export async function getImage(id: string): Promise<StoredImage | undefined> {
   return db.get("images", id);
 }
 
+export async function getAllImages(): Promise<StoredImage[]> {
+  const db = await getDb();
+  return db.getAll("images");
+}
+
 export async function deleteImage(id: string): Promise<void> {
   const db = await getDb();
   await db.delete("images", id);
@@ -115,4 +140,20 @@ export async function saveSetting(key: string, value: unknown): Promise<void> {
 export async function getSetting<T>(key: string): Promise<T | undefined> {
   const db = await getDb();
   return db.get("settings", key) as Promise<T | undefined>;
+}
+
+export async function getAllProjects(): Promise<ProjectEntry[]> {
+  const db = await getDb();
+  const all = await db.getAll("projects");
+  return all.sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+export async function saveProject(project: ProjectEntry): Promise<void> {
+  const db = await getDb();
+  await db.put("projects", project);
+}
+
+export async function deleteProject(id: string): Promise<void> {
+  const db = await getDb();
+  await db.delete("projects", id);
 }

@@ -19,6 +19,10 @@ export function useMapData() {
     });
   }, []);
 
+  const replaceElements = useCallback((els: MapElement[]) => {
+    setElements(els);
+  }, []);
+
   const addElement = useCallback(async (element: MapElement) => {
     await saveElement(element);
     setElements((prev) => [...prev, element]);
@@ -106,5 +110,6 @@ export function useMapData() {
     clearAll,
     exportGeoJSON,
     importGeoJSON,
+    setElements: replaceElements,
   };
 }
