@@ -1,8 +1,8 @@
 import React from "react";
 import {
   MapPin, Pentagon, Square, Circle, MousePointer,
-  Layers, Search, Download, Upload, Trash2,
-  Sun, Moon, Undo2, Redo2, Ruler, Map
+  Search, Upload, FolderOpen, Trash2,
+  Undo2, Redo2, Ruler, Map, Layers
 } from "lucide-react";
 
 export type Tool =
@@ -13,13 +13,19 @@ export type Tool =
   | "circle"
   | "measure";
 
+export type MapMode = "osm" | "satellite" | "dark";
+
+export type SearchResult = {
+  lat: number;
+  lng: number;
+  name: string;
+};
+
 interface ToolbarProps {
   activeTool: Tool;
   onToolChange: (tool: Tool) => void;
-  mapLayer: "osm" | "satellite";
-  onLayerToggle: () => void;
-  darkMode: boolean;
-  onDarkModeToggle: () => void;
+  mapMode: MapMode;
+  onMapModeChange: (mode: MapMode) => void;
   onExport: () => void;
   onImport: () => void;
   onClearAll: () => void;
@@ -30,6 +36,10 @@ interface ToolbarProps {
   searchQuery: string;
   onSearchChange: (q: string) => void;
   onSearchSubmit: () => void;
+  searchResults: SearchResult[];
+  searchError: string | null;
+  onResultSelect: (result: SearchResult) => void;
+  onResultsDismiss: () => void;
   elementCount: number;
 }
 
@@ -42,13 +52,19 @@ const TOOLS: { id: Tool; icon: React.ReactNode; label: string }[] = [
   { id: "measure", icon: <Ruler size={16} />, label: "Measure Distance (E)" },
 ];
 
+const LAYER_CYCLE: MapMode[] = ["osm", "satellite", "dark"];
+
+const LAYER_TITLES: Record<MapMode, string> = {
+  osm:       "Street Map — click for Satellite",
+  satellite: "Satellite — click for Dark Mode",
+  dark:      "Dark Mode — click for Street Map",
+};
+
 export default function Toolbar({
   activeTool,
   onToolChange,
-  mapLayer,
-  onLayerToggle,
-  darkMode,
-  onDarkModeToggle,
+  mapMode,
+  onMapModeChange,
   onExport,
   onImport,
   onClearAll,
@@ -59,8 +75,14 @@ export default function Toolbar({
   searchQuery,
   onSearchChange,
   onSearchSubmit,
+  searchResults,
+  searchError,
+  onResultSelect,
+  onResultsDismiss,
   elementCount,
 }: ToolbarProps) {
+  const hasDropdown = searchResults.length > 0 || searchError !== null;
+
   return (
     <div className="toolbar">
       {/* Logo */}
@@ -72,18 +94,41 @@ export default function Toolbar({
       <div className="toolbar-divider" />
 
       {/* Search */}
-      <div className="search-group">
+      <div className="search-group" style={{ position: "relative" }}>
         <input
           type="search"
           className="search-input"
           placeholder="Search address..."
           value={searchQuery}
           onChange={(e) => onSearchChange(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && onSearchSubmit()}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") onSearchSubmit();
+            if (e.key === "Escape") onResultsDismiss();
+          }}
         />
         <button className="search-btn" onClick={onSearchSubmit} title="Search">
           <Search size={14} />
         </button>
+
+        {/* Dropdown: results or error */}
+        {hasDropdown && (
+          <div className="search-dropdown">
+            {searchError && (
+              <div className="search-dropdown-error">{searchError}</div>
+            )}
+            {searchResults.map((r, i) => (
+              <button
+                key={i}
+                className="search-dropdown-item"
+                onClick={() => onResultSelect(r)}
+                title={r.name}
+              >
+                <span className="search-dropdown-icon">📍</span>
+                <span className="search-dropdown-name">{r.name}</span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="toolbar-divider" />
@@ -106,42 +151,26 @@ export default function Toolbar({
 
       {/* Undo / Redo */}
       <div className="toolbar-group">
-        <button
-          className="tool-btn"
-          onClick={onUndo}
-          disabled={!canUndo}
-          title="Undo (Ctrl+Z)"
-        >
+        <button className="tool-btn" onClick={onUndo} disabled={!canUndo} title="Undo (Ctrl+Z)">
           <Undo2 size={16} />
         </button>
-        <button
-          className="tool-btn"
-          onClick={onRedo}
-          disabled={!canRedo}
-          title="Redo (Ctrl+Y)"
-        >
+        <button className="tool-btn" onClick={onRedo} disabled={!canRedo} title="Redo (Ctrl+Y)">
           <Redo2 size={16} />
         </button>
       </div>
 
       <div className="toolbar-divider" />
 
-      {/* Map Layer */}
+      {/* Layer cycle button */}
       <button
-        className={`tool-btn ${mapLayer === "satellite" ? "tool-btn-active" : ""}`}
-        onClick={onLayerToggle}
-        title={`Switch to ${mapLayer === "osm" ? "Satellite" : "Street"} view`}
+        className={`tool-btn ${mapMode !== "osm" ? "tool-btn-active" : ""}`}
+        onClick={() => {
+          const idx = LAYER_CYCLE.indexOf(mapMode);
+          onMapModeChange(LAYER_CYCLE[(idx + 1) % LAYER_CYCLE.length]);
+        }}
+        title={LAYER_TITLES[mapMode]}
       >
         <Layers size={16} />
-      </button>
-
-      {/* Dark Mode */}
-      <button
-        className="tool-btn"
-        onClick={onDarkModeToggle}
-        title="Toggle Dark Mode"
-      >
-        {darkMode ? <Sun size={16} /> : <Moon size={16} />}
       </button>
 
       <div className="toolbar-spacer" />
@@ -149,10 +178,10 @@ export default function Toolbar({
       {/* Data Management */}
       <div className="toolbar-group">
         <button className="tool-btn" onClick={onExport} title="Export GeoJSON">
-          <Download size={16} />
+          <Upload size={16} />
         </button>
         <button className="tool-btn" onClick={onImport} title="Import GeoJSON">
-          <Upload size={16} />
+          <FolderOpen size={16} />
         </button>
         <button
           className="tool-btn tool-btn-danger"

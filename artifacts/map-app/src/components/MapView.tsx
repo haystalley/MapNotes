@@ -53,6 +53,8 @@ interface MapViewProps {
   selectedElementId: string | null;
   measurePoints: [number, number][];
   onMeasurePoint: (lat: number, lng: number) => void;
+  searchLocation: { lat: number; lng: number } | null;
+  onSearchLocationConsumed: () => void;
 }
 
 const OSM_URL = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
@@ -70,12 +72,16 @@ export default function MapView({
   selectedElementId,
   measurePoints,
   onMeasurePoint,
+  searchLocation,
+  onSearchLocationConsumed,
 }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const tileLayerRef = useRef<L.TileLayer | null>(null);
   const layersRef = useRef<Map<string, L.Layer>>(new Map());
   const measureLayerRef = useRef<L.FeatureGroup | null>(null);
+  const searchMarkerRef = useRef<L.Marker | null>(null);
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // For polygon drawing
   const polygonPointsRef = useRef<[number, number][]>([]);
@@ -135,6 +141,48 @@ export default function MapView({
       ? "invert(90%) hue-rotate(180deg)"
       : "";
   }, [darkMode]);
+
+  // ---------- Search location flyTo ----------
+  useEffect(() => {
+    if (!mapRef.current || !searchLocation) return;
+    const map = mapRef.current;
+
+    // Clear previous search marker and timer
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    if (searchMarkerRef.current) {
+      map.removeLayer(searchMarkerRef.current);
+      searchMarkerRef.current = null;
+    }
+
+    // Blue classic pushpin for search results
+    const searchIcon = L.divIcon({
+      className: "",
+      html: `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="38" viewBox="0 0 28 38">
+        <ellipse cx="14" cy="36" rx="5" ry="2" fill="rgba(0,0,0,0.18)"/>
+        <path d="M14 2C8.477 2 4 6.477 4 12c0 7.5 10 24 10 24s10-16.5 10-24c0-5.523-4.477-10-10-10z"
+          fill="#2563eb" stroke="white" stroke-width="1.5"/>
+        <circle cx="14" cy="12" r="4.5" fill="white" opacity="0.9"/>
+      </svg>`,
+      iconSize: [28, 38],
+      iconAnchor: [14, 38],
+      popupAnchor: [0, -40],
+    });
+
+    searchMarkerRef.current = L.marker([searchLocation.lat, searchLocation.lng], { icon: searchIcon })
+      .addTo(map);
+
+    map.flyTo([searchLocation.lat, searchLocation.lng], 15, { animate: true, duration: 1.2 });
+
+    // Auto-remove marker after 8 seconds
+    searchTimerRef.current = setTimeout(() => {
+      if (searchMarkerRef.current && mapRef.current) {
+        mapRef.current.removeLayer(searchMarkerRef.current);
+        searchMarkerRef.current = null;
+      }
+    }, 8000);
+
+    onSearchLocationConsumed();
+  }, [searchLocation, onSearchLocationConsumed]);
 
   // ---------- Render elements ----------
   useEffect(() => {
