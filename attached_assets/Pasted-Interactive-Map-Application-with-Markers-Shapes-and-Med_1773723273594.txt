@@ -1,0 +1,99 @@
+Interactive Map Application with Markers, Shapes, and Media
+Build me a standalone web application with a sleek, modern interactive map where I can place markers, draw shapes, and attach photos/descriptions to each element. The app should function similar to Leaflet but with a contemporary UI/UX design.
+
+Core Requirements:
+Map Functionality:
+
+Base maps from OpenStreetMap with toggleable overlay
+
+Satellite view option (using Mapbox satellite or similar free tier)
+
+Smooth panning and zooming
+
+Ability to place markers by clicking on the map
+
+Ability to draw shapes (polygons, rectangles, circles) on the map
+
+Adjustable opacity for placed images/overlays
+
+Interactive Elements:
+
+Click/tap on any marker or shape to open a popup/card displaying:
+
+Photo(s) - allow multiple image uploads
+
+Text description
+
+Optional: title, date, tags
+
+Image upload functionality (drag-and-drop or file picker)
+
+Store images locally in the browser (IndexedDB or localStorage) so they persist on page reload
+
+UI/Design Requirements:
+
+Clean, modern, minimalist design
+
+Responsive - works on desktop and mobile (touch-friendly)
+
+Floating toolbar with intuitive icons for:
+
+Toggle between OpenStreetMap/Satellite
+
+Add marker mode
+
+Draw shape mode
+
+Adjust opacity slider
+
+Clear/delete tools
+
+Smooth animations and transitions
+
+Dark/light mode toggle (optional but nice)
+
+Data Management:
+
+Save all markers, shapes, and attached media locally
+
+Export/import functionality (GeoJSON format) to backup or share data
+
+Option to clear all data and start fresh
+
+Technical Specifications:
+
+Use Leaflet.js or Mapbox GL JS for mapping
+
+Modern JavaScript framework (React or Vue) for reactive UI
+
+IndexedDB for local storage of images and data
+
+Mobile-friendly with touch events for drawing
+
+Fast performance even with many markers/images
+
+Additional Features I Might Have Missed:
+
+Search/address lookup to jump to locations
+
+Custom icons for different marker types
+
+Group/layer management for organizing markers
+
+Measurement tool for shapes (distance/area)
+
+Undo/redo functionality
+
+Batch operations (delete multiple items)
+
+Implementation Notes:
+Focus on being a standalone app that works offline-capable
+
+No server required - everything runs in the browser
+
+Free tier mapping services (OpenStreetMap + optional Mapbox token)
+
+Intuitive enough for non-technical users
+
+Please build this with clean, well-documented code that I could potentially understand and modify later. Include instructions for setting up any API keys needed.
+
