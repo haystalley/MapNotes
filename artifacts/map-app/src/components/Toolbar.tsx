@@ -2,8 +2,9 @@ import React, { useRef } from "react";
 import {
   MapPin, Pentagon, Square, Circle, MousePointer,
   Search, Upload, FolderOpen, Trash2,
-  Undo2, Redo2, Ruler, Layers
+  Undo2, Redo2, Ruler, Layers, Moon
 } from "lucide-react";
+import { LayerId, ActiveLayer, CYCLE_LAYERS } from "@/types";
 
 export type Tool =
   | "select"
@@ -12,8 +13,6 @@ export type Tool =
   | "rectangle"
   | "circle"
   | "measure";
-
-export type MapMode = "osm" | "satellite" | "topo" | "dark";
 
 export type SearchResult = {
   lat: number;
@@ -24,8 +23,12 @@ export type SearchResult = {
 interface ToolbarProps {
   activeTool: Tool;
   onToolChange: (tool: Tool) => void;
-  mapMode: MapMode;
-  onMapModeChange: (mode: MapMode) => void;
+  darkMode: boolean;
+  onDarkModeToggle: () => void;
+  cycleLayer: LayerId;
+  onCycleLayer: () => void;
+  onLayersPanelToggle: () => void;
+  layersPanelBtnRef: React.RefObject<HTMLButtonElement | null>;
   onExport: () => void;
   onImport: () => void;
   onClearAll: () => void;
@@ -43,6 +46,7 @@ interface ToolbarProps {
   elementCount: number;
   onProjectsToggle: () => void;
   projectsBtnRef: React.RefObject<HTMLButtonElement | null>;
+  activeLayers: ActiveLayer[];
 }
 
 const TOOLS: { id: Tool; icon: React.ReactNode; label: string }[] = [
@@ -54,20 +58,23 @@ const TOOLS: { id: Tool; icon: React.ReactNode; label: string }[] = [
   { id: "measure", icon: <Ruler size={16} />, label: "Measure Distance (E)" },
 ];
 
-const LAYER_CYCLE: MapMode[] = ["osm", "satellite", "topo", "dark"];
-
-const LAYER_TITLES: Record<MapMode, string> = {
-  osm:       "Street Map — click for Satellite",
+const CYCLE_TITLES: Record<LayerId, string> = {
+  street:    "Street Map — click for Satellite",
   satellite: "Satellite — click for Topographic",
-  topo:      "Topographic — click for Dark Mode",
-  dark:      "Dark Mode — click for Street Map",
+  topo:      "Topographic — click for Hillshade",
+  hillshade: "Hillshade — click for Street Map",
+  contour:   "Street Map — click for Satellite",
 };
 
 export default function Toolbar({
   activeTool,
   onToolChange,
-  mapMode,
-  onMapModeChange,
+  darkMode,
+  onDarkModeToggle,
+  cycleLayer,
+  onCycleLayer,
+  onLayersPanelToggle,
+  layersPanelBtnRef,
   onExport,
   onImport,
   onClearAll,
@@ -85,8 +92,10 @@ export default function Toolbar({
   elementCount,
   onProjectsToggle,
   projectsBtnRef,
+  activeLayers,
 }: ToolbarProps) {
   const hasDropdown = searchResults.length > 0 || searchError !== null;
+  const isCycleActive = activeLayers.length === 1 && activeLayers[0].id === cycleLayer;
 
   return (
     <div className="toolbar">
@@ -125,7 +134,6 @@ export default function Toolbar({
           <Search size={14} />
         </button>
 
-        {/* Dropdown: results or error */}
         {hasDropdown && (
           <div className="search-dropdown">
             {searchError && (
@@ -178,14 +186,39 @@ export default function Toolbar({
 
       {/* Layer cycle button */}
       <button
-        className={`tool-btn ${mapMode !== "osm" ? "tool-btn-active" : ""}`}
-        onClick={() => {
-          const idx = LAYER_CYCLE.indexOf(mapMode);
-          onMapModeChange(LAYER_CYCLE[(idx + 1) % LAYER_CYCLE.length]);
-        }}
-        title={LAYER_TITLES[mapMode]}
+        className={`tool-btn ${!isCycleActive ? "tool-btn-active" : ""}`}
+        onClick={onCycleLayer}
+        title={CYCLE_TITLES[cycleLayer] || "Cycle map layer"}
+        style={{ fontSize: 11, gap: 2 }}
       >
-        <Layers size={16} />
+        <Layers size={15} />
+      </button>
+
+      {/* Layers panel button */}
+      <button
+        ref={layersPanelBtnRef}
+        className={`tool-btn ${activeLayers.length > 1 || activeLayers.some(l => l.id === "contour") ? "tool-btn-active" : ""}`}
+        onClick={onLayersPanelToggle}
+        title="Layers panel — control all map layers"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <polygon points="12 2 2 7 12 12 22 7 12 2"/>
+          <polyline points="2 17 12 22 22 17"/>
+          <polyline points="2 12 12 17 22 12"/>
+        </svg>
+      </button>
+
+      {/* Dark mode moon button */}
+      <button
+        className={`tool-btn ${darkMode ? "tool-btn-active" : ""}`}
+        onClick={onDarkModeToggle}
+        title={darkMode ? "Dark mode ON — click to disable" : "Dark mode OFF — click to enable"}
+      >
+        {darkMode ? (
+          <Moon size={15} fill="currentColor" />
+        ) : (
+          <Moon size={15} />
+        )}
       </button>
 
       <div className="toolbar-spacer" />
@@ -211,7 +244,6 @@ export default function Toolbar({
         </button>
       </div>
 
-      {/* Element Count Badge */}
       {elementCount > 0 && (
         <div className="toolbar-badge" title={`${elementCount} element(s) on map`}>
           {elementCount}

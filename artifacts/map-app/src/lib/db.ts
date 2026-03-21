@@ -47,7 +47,9 @@ export interface ProjectEntry {
   name: string;
   createdAt: number;
   updatedAt: number;
-  mapMode: string;
+  mapMode?: string;
+  activeLayers?: { id: string; opacity: number; activatedAt: number }[];
+  darkMode?: boolean;
   elements: MapElement[];
   images: StoredImage[];
   thumbnail: string;

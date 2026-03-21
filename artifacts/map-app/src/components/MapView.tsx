@@ -4,8 +4,9 @@ import "leaflet/dist/leaflet.css";
 import { MapElement, MapMarker, MapShape } from "@/lib/db";
 import { generateId } from "@/lib/geo";
 import { Tool } from "./Toolbar";
+import { LayerId, ActiveLayer } from "@/types";
+import { TILE_CONFIGS } from "@/lib/tiles";
 
-// Fix Leaflet default icon paths
 delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
@@ -46,7 +47,7 @@ function createMarkerIcon(color: string, iconType: string): L.DivIcon {
 interface MapViewProps {
   elements: MapElement[];
   activeTool: Tool;
-  mapLayer: "osm" | "satellite" | "topo";
+  activeLayers: ActiveLayer[];
   darkMode: boolean;
   onElementAdd: (element: MapElement) => void;
   onElementSelect: (element: MapElement | null) => void;
@@ -57,17 +58,17 @@ interface MapViewProps {
   onSearchLocationConsumed: () => void;
 }
 
-const OSM_URL = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
-const OSM_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
-const SAT_URL = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
-const SAT_ATTRIBUTION = "Tiles &copy; Esri";
-const TOPO_URL = "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png";
-const TOPO_ATTRIBUTION = 'Map data: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, <a href="http://viewfinderpanoramas.org">SRTM</a> | Map style: &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/">CC-BY-SA</a>)';
+function getTileConfig(id: LayerId, darkMode: boolean) {
+  if (id === "street" && darkMode) {
+    return TILE_CONFIGS["streetDark"];
+  }
+  return TILE_CONFIGS[id];
+}
 
 export default function MapView({
   elements,
   activeTool,
-  mapLayer,
+  activeLayers,
   darkMode,
   onElementAdd,
   onElementSelect,
@@ -79,18 +80,17 @@ export default function MapView({
 }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
-  const tileLayerRef = useRef<L.TileLayer | null>(null);
+  const tileLayersRef = useRef<Map<LayerId, L.TileLayer>>(new Map());
   const layersRef = useRef<Map<string, L.Layer>>(new Map());
   const measureLayerRef = useRef<L.FeatureGroup | null>(null);
   const searchMarkerRef = useRef<L.Marker | null>(null);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // For polygon drawing
   const polygonPointsRef = useRef<[number, number][]>([]);
   const drawLayerRef = useRef<L.FeatureGroup | null>(null);
   const previewLayerRef = useRef<L.Polyline | L.Polygon | null>(null);
+  const rubberBandRef = useRef<L.Polyline | null>(null);
 
-  // For rectangle / circle drawing (drag)
   const dragStartRef = useRef<L.LatLng | null>(null);
   const isDraggingRef = useRef(false);
   const dragShapeRef = useRef<L.Rectangle | L.Circle | null>(null);
@@ -107,42 +107,87 @@ export default function MapView({
 
     L.control.zoom({ position: "bottomright" }).addTo(map);
 
-    const tileLayer = L.tileLayer(OSM_URL, {
-      attribution: OSM_ATTRIBUTION,
-      maxZoom: 19,
-    }).addTo(map);
-
     const measureLayer = new L.FeatureGroup().addTo(map);
     const drawLayer = new L.FeatureGroup().addTo(map);
 
     mapRef.current = map;
-    tileLayerRef.current = tileLayer;
     measureLayerRef.current = measureLayer;
     drawLayerRef.current = drawLayer;
 
     return () => {
       map.remove();
       mapRef.current = null;
+      tileLayersRef.current.clear();
     };
   }, []);
 
-  // ---------- Layer toggle ----------
+  // ---------- Multi-layer management ----------
   useEffect(() => {
-    if (!mapRef.current || !tileLayerRef.current) return;
+    if (!mapRef.current) return;
     const map = mapRef.current;
-    map.removeLayer(tileLayerRef.current);
-    let url = OSM_URL, attribution = OSM_ATTRIBUTION;
-    if (mapLayer === "satellite") { url = SAT_URL; attribution = SAT_ATTRIBUTION; }
-    else if (mapLayer === "topo") { url = TOPO_URL; attribution = TOPO_ATTRIBUTION; }
-    tileLayerRef.current = L.tileLayer(url, { attribution, maxZoom: 17 }).addTo(map);
-  }, [mapLayer]);
+    const current = tileLayersRef.current;
 
-  // ---------- Dark mode ----------
+    const desiredIds = new Set(activeLayers.map((l) => l.id));
+
+    // Remove layers no longer active
+    for (const [id, tl] of Array.from(current.entries())) {
+      if (!desiredIds.has(id)) {
+        map.removeLayer(tl);
+        current.delete(id);
+      }
+    }
+
+    // Separate base and overlay layers so overlays are always on top
+    const baseLayers = activeLayers.filter((l) => l.id !== "contour");
+    const overlayLayers = activeLayers.filter((l) => l.id === "contour");
+
+    const addOrUpdate = (layer: ActiveLayer) => {
+      const cfg = getTileConfig(layer.id, darkMode);
+      if (current.has(layer.id)) {
+        current.get(layer.id)!.setOpacity(layer.opacity);
+      } else {
+        const tl = L.tileLayer(cfg.url, {
+          attribution: cfg.attribution,
+          maxZoom: cfg.maxZoom,
+          subdomains: cfg.subdomains || "abc",
+          opacity: layer.opacity,
+        }).addTo(map);
+        current.set(layer.id, tl);
+      }
+    };
+
+    for (const layer of baseLayers) addOrUpdate(layer);
+    for (const layer of overlayLayers) addOrUpdate(layer);
+  }, [activeLayers, darkMode]);
+
+  // When dark mode changes, rebuild existing street tile if active
   useEffect(() => {
-    if (!containerRef.current) return;
-    containerRef.current.style.filter = darkMode
-      ? "invert(90%) hue-rotate(180deg)"
-      : "";
+    if (!mapRef.current) return;
+    const map = mapRef.current;
+    const current = tileLayersRef.current;
+    const streetLayer = activeLayers.find((l) => l.id === "street");
+    if (!streetLayer) return;
+    if (current.has("street")) {
+      map.removeLayer(current.get("street")!);
+      current.delete("street");
+    }
+    const cfg = getTileConfig("street", darkMode);
+    const tl = L.tileLayer(cfg.url, {
+      attribution: cfg.attribution,
+      maxZoom: cfg.maxZoom,
+      subdomains: cfg.subdomains || "abc",
+      opacity: streetLayer.opacity,
+    }).addTo(map);
+    current.set("street", tl);
+  }, [darkMode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ---------- Dark mode UI class only (no CSS filter on map) ----------
+  useEffect(() => {
+    if (darkMode) {
+      document.documentElement.classList.add("dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+    }
   }, [darkMode]);
 
   // ---------- Search location flyTo ----------
@@ -150,14 +195,12 @@ export default function MapView({
     if (!mapRef.current || !searchLocation) return;
     const map = mapRef.current;
 
-    // Clear previous search marker and timer
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
     if (searchMarkerRef.current) {
       map.removeLayer(searchMarkerRef.current);
       searchMarkerRef.current = null;
     }
 
-    // Blue classic pushpin for search results
     const searchIcon = L.divIcon({
       className: "",
       html: `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="38" viewBox="0 0 28 38">
@@ -176,7 +219,6 @@ export default function MapView({
 
     map.flyTo([searchLocation.lat, searchLocation.lng], 15, { animate: true, duration: 1.2 });
 
-    // Auto-remove marker after 8 seconds
     searchTimerRef.current = setTimeout(() => {
       if (searchMarkerRef.current && mapRef.current) {
         mapRef.current.removeLayer(searchMarkerRef.current);
@@ -193,7 +235,6 @@ export default function MapView({
     const map = mapRef.current;
     const currentIds = new Set(elements.map((e) => e.id));
 
-    // Remove stale layers
     for (const [id, layer] of Array.from(layersRef.current.entries())) {
       if (!currentIds.has(id)) {
         map.removeLayer(layer);
@@ -249,27 +290,20 @@ export default function MapView({
     }
   }, [elements, selectedElementId, onElementSelect]);
 
-  // ---------- Drawing tools (custom, no leaflet-draw) ----------
+  // ---------- Drawing tools ----------
   useEffect(() => {
     if (!mapRef.current || !drawLayerRef.current) return;
     const map = mapRef.current;
     const drawLayer = drawLayerRef.current;
 
-    // Reset draw state
     polygonPointsRef.current = [];
     dragStartRef.current = null;
     isDraggingRef.current = false;
-    if (previewLayerRef.current) {
-      map.removeLayer(previewLayerRef.current);
-      previewLayerRef.current = null;
-    }
-    if (dragShapeRef.current) {
-      map.removeLayer(dragShapeRef.current);
-      dragShapeRef.current = null;
-    }
+    if (previewLayerRef.current) { map.removeLayer(previewLayerRef.current); previewLayerRef.current = null; }
+    if (rubberBandRef.current) { map.removeLayer(rubberBandRef.current); rubberBandRef.current = null; }
+    if (dragShapeRef.current) { map.removeLayer(dragShapeRef.current); dragShapeRef.current = null; }
     drawLayer.clearLayers();
 
-    // Remove all prior listeners
     map.off("click");
     map.off("dblclick");
     map.off("mousemove");
@@ -290,18 +324,12 @@ export default function MapView({
       map.on("click", (e: L.LeafletMouseEvent) => {
         const id = generateId();
         const el: MapMarker = {
-          id,
-          type: "marker",
-          lat: e.latlng.lat,
-          lng: e.latlng.lng,
-          title: "New Marker",
-          description: "",
-          tags: [],
-          date: new Date().toISOString().slice(0, 10),
-          color: "#3b82f6",
-          iconType: "default",
-          imageIds: [],
-          createdAt: Date.now(),
+          id, type: "marker",
+          lat: e.latlng.lat, lng: e.latlng.lng,
+          title: "New Marker", description: "",
+          tags: [], date: new Date().toISOString().slice(0, 10),
+          color: "#3b82f6", iconType: "default",
+          imageIds: [], createdAt: Date.now(),
         };
         onElementAdd(el);
         onElementSelect(el);
@@ -327,23 +355,32 @@ export default function MapView({
         polygonPointsRef.current = [...polygonPointsRef.current, [e.latlng.lat, e.latlng.lng]];
         const pts = polygonPointsRef.current;
 
-        // Update preview
+        // Update committed preview (the solid polygon outline so far)
         if (previewLayerRef.current) map.removeLayer(previewLayerRef.current);
         if (pts.length === 1) {
           previewLayerRef.current = L.polyline(pts as L.LatLngTuple[], {
-            color: "#3b82f6",
-            dashArray: "6 4",
-            weight: 2,
+            color: "#3b82f6", dashArray: "6 4", weight: 2,
           }).addTo(map);
         } else {
           previewLayerRef.current = L.polygon(pts as L.LatLngTuple[], {
-            color: "#3b82f6",
-            fillColor: "#3b82f6",
-            fillOpacity: 0.2,
-            dashArray: "6 4",
-            weight: 2,
+            color: "#3b82f6", fillColor: "#3b82f6",
+            fillOpacity: 0.15, dashArray: "6 4", weight: 2,
           }).addTo(map);
         }
+
+        // Reset rubber band
+        if (rubberBandRef.current) { map.removeLayer(rubberBandRef.current); rubberBandRef.current = null; }
+        const lastPt = pts[pts.length - 1] as L.LatLngTuple;
+        rubberBandRef.current = L.polyline([lastPt, lastPt], {
+          color: "#f97316", dashArray: "4 4", weight: 1.5, opacity: 0.7,
+        }).addTo(map);
+      });
+
+      map.on("mousemove", (e: L.LeafletMouseEvent) => {
+        if (!rubberBandRef.current || polygonPointsRef.current.length === 0) return;
+        const pts = polygonPointsRef.current;
+        const lastPt = pts[pts.length - 1] as L.LatLngTuple;
+        rubberBandRef.current.setLatLngs([lastPt, [e.latlng.lat, e.latlng.lng]]);
       });
 
       map.on("dblclick", (e: L.LeafletMouseEvent) => {
@@ -352,6 +389,7 @@ export default function MapView({
         if (pts.length < 3) return;
 
         if (previewLayerRef.current) { map.removeLayer(previewLayerRef.current); previewLayerRef.current = null; }
+        if (rubberBandRef.current) { map.removeLayer(rubberBandRef.current); rubberBandRef.current = null; }
         polygonPointsRef.current = [];
 
         const geojson: GeoJSON.Geometry = {
@@ -360,18 +398,11 @@ export default function MapView({
         };
         const id = generateId();
         const el: MapShape = {
-          id,
-          type: "polygon",
-          geojson,
-          title: "New Polygon",
-          description: "",
-          tags: [],
-          date: new Date().toISOString().slice(0, 10),
-          color: "#3b82f6",
-          fillColor: "#3b82f6",
-          opacity: 0.3,
-          imageIds: [],
-          createdAt: Date.now(),
+          id, type: "polygon", geojson,
+          title: "New Polygon", description: "",
+          tags: [], date: new Date().toISOString().slice(0, 10),
+          color: "#3b82f6", fillColor: "#3b82f6", opacity: 0.3,
+          imageIds: [], createdAt: Date.now(),
         };
         onElementAdd(el);
         onElementSelect(el);
@@ -379,7 +410,7 @@ export default function MapView({
       return;
     }
 
-    // --- Rectangle (mousedown → drag → mouseup) ---
+    // --- Rectangle ---
     if (activeTool === "rectangle") {
       container.style.cursor = "crosshair";
       map.dragging.disable();
@@ -394,25 +425,17 @@ export default function MapView({
         if (dragShapeRef.current) map.removeLayer(dragShapeRef.current);
         const bounds = L.latLngBounds(dragStartRef.current, e.latlng);
         dragShapeRef.current = L.rectangle(bounds, {
-          color: "#3b82f6",
-          fillColor: "#3b82f6",
-          fillOpacity: 0.2,
-          dashArray: "6 4",
-          weight: 2,
+          color: "#3b82f6", fillColor: "#3b82f6", fillOpacity: 0.2, dashArray: "6 4", weight: 2,
         }).addTo(map);
       });
 
       map.on("mouseup", (e: L.LeafletMouseEvent) => {
         if (!isDraggingRef.current || !dragStartRef.current) return;
         isDraggingRef.current = false;
-
         if (dragShapeRef.current) { map.removeLayer(dragShapeRef.current); dragShapeRef.current = null; }
-
         const start = dragStartRef.current;
         const end = e.latlng;
         dragStartRef.current = null;
-
-        // Minimum drag distance
         if (Math.abs(start.lat - end.lat) < 0.0001 && Math.abs(start.lng - end.lng) < 0.0001) return;
 
         const bounds = L.latLngBounds(start, end);
@@ -428,18 +451,11 @@ export default function MapView({
         };
         const id = generateId();
         const el: MapShape = {
-          id,
-          type: "rectangle",
-          geojson,
-          title: "New Rectangle",
-          description: "",
-          tags: [],
-          date: new Date().toISOString().slice(0, 10),
-          color: "#3b82f6",
-          fillColor: "#3b82f6",
-          opacity: 0.3,
-          imageIds: [],
-          createdAt: Date.now(),
+          id, type: "rectangle", geojson,
+          title: "New Rectangle", description: "",
+          tags: [], date: new Date().toISOString().slice(0, 10),
+          color: "#3b82f6", fillColor: "#3b82f6", opacity: 0.3,
+          imageIds: [], createdAt: Date.now(),
         };
         onElementAdd(el);
         onElementSelect(el);
@@ -447,7 +463,7 @@ export default function MapView({
       return;
     }
 
-    // --- Circle (mousedown → drag → mouseup) ---
+    // --- Circle ---
     if (activeTool === "circle") {
       container.style.cursor = "crosshair";
       map.dragging.disable();
@@ -462,51 +478,33 @@ export default function MapView({
         const radius = dragStartRef.current.distanceTo(e.latlng);
         if (dragShapeRef.current) map.removeLayer(dragShapeRef.current);
         dragShapeRef.current = L.circle(dragStartRef.current, {
-          radius,
-          color: "#3b82f6",
-          fillColor: "#3b82f6",
-          fillOpacity: 0.2,
-          dashArray: "6 4",
-          weight: 2,
+          radius, color: "#3b82f6", fillColor: "#3b82f6", fillOpacity: 0.2, dashArray: "6 4", weight: 2,
         }).addTo(map);
       });
 
       map.on("mouseup", (e: L.LeafletMouseEvent) => {
         if (!isDraggingRef.current || !dragStartRef.current) return;
         isDraggingRef.current = false;
-
         if (dragShapeRef.current) { map.removeLayer(dragShapeRef.current); dragShapeRef.current = null; }
-
         const center = dragStartRef.current;
         const radius = center.distanceTo(e.latlng);
         dragStartRef.current = null;
-
         if (radius < 10) return;
 
         const geojson: GeoJSON.Geometry = { type: "Point", coordinates: [center.lng, center.lat] };
         const id = generateId();
         const el: MapShape = {
-          id,
-          type: "circle",
-          geojson,
-          center: [center.lat, center.lng],
-          radius,
-          title: "New Circle",
-          description: "",
-          tags: [],
-          date: new Date().toISOString().slice(0, 10),
-          color: "#3b82f6",
-          fillColor: "#3b82f6",
-          opacity: 0.3,
-          imageIds: [],
-          createdAt: Date.now(),
+          id, type: "circle", geojson, center: [center.lat, center.lng], radius,
+          title: "New Circle", description: "",
+          tags: [], date: new Date().toISOString().slice(0, 10),
+          color: "#3b82f6", fillColor: "#3b82f6", opacity: 0.3,
+          imageIds: [], createdAt: Date.now(),
         };
         onElementAdd(el);
         onElementSelect(el);
       });
       return;
     }
-
   }, [activeTool, onElementAdd, onElementSelect, onMeasurePoint]);
 
   // ---------- Measure line ----------

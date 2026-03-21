@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import MapView from "@/components/MapView";
-import Toolbar, { Tool, MapMode, SearchResult } from "@/components/Toolbar";
+import Toolbar, { Tool, SearchResult } from "@/components/Toolbar";
 import ElementPopup from "@/components/ElementPopup";
 import MeasurePanel from "@/components/MeasurePanel";
 import ProjectsPanel from "@/components/ProjectsPanel";
+import LayersPanel from "@/components/LayersPanel";
 import { useMapData } from "@/hooks/useMapData";
 import { MapElement } from "@/lib/db";
 import {
@@ -14,13 +15,21 @@ import {
   ProjectEntry,
 } from "@/lib/db";
 import { generateThumbnail } from "@/lib/thumbnail";
+import { LayerId, ActiveLayer, CYCLE_LAYERS } from "@/types";
+import { DEFAULT_CONTOUR_OPACITY } from "@/lib/tiles";
 
 const VISITOR_KEY = "mapnotes_visitor_initialized";
+
+function makeLayer(id: LayerId, opacity?: number): ActiveLayer {
+  return { id, opacity: opacity ?? (id === "contour" ? DEFAULT_CONTOUR_OPACITY : 1), activatedAt: Date.now() };
+}
 
 export default function MapPage() {
   const { elements, loading, addElement, updateElement, removeElement, clearAll, exportGeoJSON, importGeoJSON, setElements } = useMapData();
   const [activeTool, setActiveTool] = useState<Tool>("select");
-  const [mapMode, setMapMode] = useState<MapMode>("osm");
+  const [darkMode, setDarkMode] = useState(false);
+  const [activeLayers, setActiveLayers] = useState<ActiveLayer[]>([makeLayer("street")]);
+  const [cycleIdx, setCycleIdx] = useState(0);
   const [selectedElement, setSelectedElement] = useState<MapElement | null>(null);
   const [measurePoints, setMeasurePoints] = useState<[number, number][]>([]);
 
@@ -37,6 +46,8 @@ export default function MapPage() {
 
   const [projectsOpen, setProjectsOpen] = useState(false);
   const projectsBtnRef = useRef<HTMLButtonElement>(null);
+  const [layersPanelOpen, setLayersPanelOpen] = useState(false);
+  const layersPanelBtnRef = useRef<HTMLButtonElement>(null);
 
   // ---- Session / first-visit detection ----
   useEffect(() => {
@@ -45,63 +56,97 @@ export default function MapPage() {
     }
   }, []);
 
-  // Load saved map mode
+  // Load saved settings
   useEffect(() => {
-    getSetting<MapMode>("mapMode").then((v) => {
-      if (v) setMapMode(v);
+    getSetting<boolean>("darkMode").then((v) => {
+      if (v != null) setDarkMode(v);
+    });
+    getSetting<ActiveLayer[]>("activeLayers").then((v) => {
+      if (Array.isArray(v) && v.length > 0) setActiveLayers(v);
+    });
+    getSetting<number>("cycleIdx").then((v) => {
+      if (v != null) setCycleIdx(v);
     });
   }, []);
 
-  const handleMapModeChange = useCallback((mode: MapMode) => {
-    setMapMode(mode);
-    saveSetting("mapMode", mode);
-    if (mode === "dark") {
-      document.documentElement.classList.add("dark");
-    } else {
-      document.documentElement.classList.remove("dark");
-    }
+  // Persist settings
+  const persistSettings = useCallback((dm: boolean, al: ActiveLayer[], ci: number) => {
+    saveSetting("darkMode", dm);
+    saveSetting("activeLayers", al);
+    saveSetting("cycleIdx", ci);
   }, []);
 
-  // Apply dark class on mount if mode is dark
-  useEffect(() => {
-    if (mapMode === "dark") {
-      document.documentElement.classList.add("dark");
-    } else {
-      document.documentElement.classList.remove("dark");
-    }
-  }, [mapMode]);
+  // ---- Dark mode ----
+  const handleDarkModeToggle = useCallback(() => {
+    setDarkMode((d) => {
+      const next = !d;
+      persistSettings(next, activeLayers, cycleIdx);
+      return next;
+    });
+  }, [activeLayers, cycleIdx, persistSettings]);
 
-  // Undo / Redo support
-  const handleElementAdd = useCallback(
-    async (el: MapElement) => {
-      setHistory((h) => [...h.slice(-30), [...elements]]);
-      setFuture([]);
-      setCanUndo(true);
-      setCanRedo(false);
-      await addElement(el);
-    },
-    [elements, addElement]
-  );
+  // ---- Layer cycle button ----
+  const handleCycleLayer = useCallback(() => {
+    const nextIdx = (cycleIdx + 1) % CYCLE_LAYERS.length;
+    const nextId = CYCLE_LAYERS[nextIdx];
+    const newLayers = [makeLayer(nextId)];
+    setCycleIdx(nextIdx);
+    setActiveLayers(newLayers);
+    persistSettings(darkMode, newLayers, nextIdx);
+  }, [cycleIdx, darkMode, persistSettings]);
 
-  const handleElementUpdate = useCallback(
-    async (el: MapElement) => {
-      await updateElement(el);
-      if (selectedElement?.id === el.id) setSelectedElement(el);
-    },
-    [updateElement, selectedElement]
-  );
+  // ---- Layers panel: toggle layer ----
+  const handleToggleLayer = useCallback((id: LayerId) => {
+    setActiveLayers((prev) => {
+      const existing = prev.find((l) => l.id === id);
+      let next: ActiveLayer[];
+      if (existing) {
+        next = prev.filter((l) => l.id !== id);
+        if (next.length === 0) next = [makeLayer("street")];
+      } else {
+        if (prev.length >= 2) {
+          const oldest = [...prev].sort((a, b) => a.activatedAt - b.activatedAt)[0];
+          next = [...prev.filter((l) => l.id !== oldest.id), makeLayer(id)];
+        } else {
+          next = [...prev, makeLayer(id)];
+        }
+      }
+      persistSettings(darkMode, next, cycleIdx);
+      return next;
+    });
+  }, [darkMode, cycleIdx, persistSettings]);
 
-  const handleElementDelete = useCallback(
-    async (id: string) => {
-      setHistory((h) => [...h.slice(-30), [...elements]]);
-      setFuture([]);
-      setCanUndo(true);
-      setCanRedo(false);
-      await removeElement(id);
-      setSelectedElement(null);
-    },
-    [elements, removeElement]
-  );
+  // ---- Layers panel: opacity change ----
+  const handleOpacityChange = useCallback((id: LayerId, opacity: number) => {
+    setActiveLayers((prev) => {
+      const next = prev.map((l) => l.id === id ? { ...l, opacity } : l);
+      persistSettings(darkMode, next, cycleIdx);
+      return next;
+    });
+  }, [darkMode, cycleIdx, persistSettings]);
+
+  // Undo / Redo
+  const handleElementAdd = useCallback(async (el: MapElement) => {
+    setHistory((h) => [...h.slice(-30), [...elements]]);
+    setFuture([]);
+    setCanUndo(true);
+    setCanRedo(false);
+    await addElement(el);
+  }, [elements, addElement]);
+
+  const handleElementUpdate = useCallback(async (el: MapElement) => {
+    await updateElement(el);
+    if (selectedElement?.id === el.id) setSelectedElement(el);
+  }, [updateElement, selectedElement]);
+
+  const handleElementDelete = useCallback(async (id: string) => {
+    setHistory((h) => [...h.slice(-30), [...elements]]);
+    setFuture([]);
+    setCanUndo(true);
+    setCanRedo(false);
+    await removeElement(id);
+    setSelectedElement(null);
+  }, [elements, removeElement]);
 
   const handleUndo = useCallback(async () => {
     if (history.length === 0) return;
@@ -141,6 +186,7 @@ export default function MapPage() {
         setSearchResults([]);
         setSearchError(null);
         setProjectsOpen(false);
+        setLayersPanelOpen(false);
       }
       if ((e.ctrlKey || e.metaKey) && e.key === "z") { e.preventDefault(); handleUndo(); }
       if ((e.ctrlKey || e.metaKey) && (e.key === "y" || (e.shiftKey && e.key === "z"))) { e.preventDefault(); handleRedo(); }
@@ -155,30 +201,24 @@ export default function MapPage() {
     if (!q) return;
     setSearchError(null);
     setSearchResults([]);
-
     try {
       const res = await fetch(
         `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=5`,
         { headers: { "Accept-Language": "en", "User-Agent": "MapNotes/1.0" } }
       );
       const data = await res.json();
-
       if (!Array.isArray(data) || data.length === 0) {
         setSearchError("Address not found. Try a more specific search.");
         return;
       }
-
       if (data.length === 1) {
         const r = data[0];
-        const loc = { lat: parseFloat(r.lat), lng: parseFloat(r.lon) };
-        setSearchLocation(loc);
+        setSearchLocation({ lat: parseFloat(r.lat), lng: parseFloat(r.lon) });
         setSearchQuery("");
       } else {
         setSearchResults(
           data.map((r: { lat: string; lon: string; display_name: string }) => ({
-            lat: parseFloat(r.lat),
-            lng: parseFloat(r.lon),
-            name: r.display_name,
+            lat: parseFloat(r.lat), lng: parseFloat(r.lon), name: r.display_name,
           }))
         );
       }
@@ -208,12 +248,9 @@ export default function MapPage() {
     setSelectedElement(null);
   }, [elements, clearAll]);
 
-  const handleImport = useCallback(
-    (file: File) => {
-      importGeoJSON(file).catch((err) => alert(`Import failed: ${err.message}`));
-    },
-    [importGeoJSON]
-  );
+  const handleImport = useCallback((file: File) => {
+    importGeoJSON(file).catch((err) => alert(`Import failed: ${err.message}`));
+  }, [importGeoJSON]);
 
   const handleMeasurePoint = useCallback((lat: number, lng: number) => {
     setMeasurePoints((pts) => [...pts, [lat, lng]]);
@@ -236,38 +273,39 @@ export default function MapPage() {
       name,
       createdAt: Date.now(),
       updatedAt: Date.now(),
-      mapMode,
+      activeLayers,
+      darkMode,
       elements: [...elements],
       images: relevantImages,
       thumbnail,
     };
     await saveProject(project);
-  }, [elements, mapMode]);
+  }, [elements, activeLayers, darkMode]);
 
   const handleLoadProject = useCallback(async (project: ProjectEntry) => {
     await clearAllElements();
-    for (const el of project.elements) {
-      await saveElement(el);
-    }
-    for (const img of project.images) {
-      await saveImage(img);
-    }
+    for (const el of project.elements) await saveElement(el);
+    for (const img of project.images) await saveImage(img);
     setElements(project.elements);
-    handleMapModeChange(project.mapMode as MapMode);
+    if (project.activeLayers && project.activeLayers.length > 0) {
+      const al = project.activeLayers as ActiveLayer[];
+      setActiveLayers(al);
+      const cycleId = al.find((l) => l.id !== "contour")?.id as LayerId | undefined;
+      const ci = cycleId ? CYCLE_LAYERS.indexOf(cycleId) : 0;
+      setCycleIdx(ci >= 0 ? ci : 0);
+    } else if (project.mapMode) {
+      const id = project.mapMode === "satellite" ? "satellite" : project.mapMode === "topo" ? "topo" : "street";
+      setActiveLayers([makeLayer(id as LayerId)]);
+    }
+    if (project.darkMode != null) setDarkMode(project.darkMode);
     setSelectedElement(null);
-    setHistory([]);
-    setFuture([]);
-    setCanUndo(false);
-    setCanRedo(false);
-  }, [handleMapModeChange, setElements]);
+    setHistory([]); setFuture([]);
+    setCanUndo(false); setCanRedo(false);
+  }, [setElements]);
 
   const handleDeleteProject = useCallback(async (id: string) => {
     await deleteProject(id);
   }, []);
-
-  const isDark = mapMode === "dark";
-  const mapLayer: "osm" | "satellite" | "topo" =
-    mapMode === "satellite" ? "satellite" : mapMode === "topo" ? "topo" : "osm";
 
   if (loading) {
     return (
@@ -278,8 +316,10 @@ export default function MapPage() {
     );
   }
 
+  const cycleLayer = CYCLE_LAYERS[cycleIdx];
+
   return (
-    <div className={`app-root ${isDark ? "dark" : ""}`}>
+    <div className={`app-root ${darkMode ? "dark" : ""}`}>
       <div style={{ position: "relative" }}>
         <Toolbar
           activeTool={activeTool}
@@ -287,8 +327,12 @@ export default function MapPage() {
             setActiveTool(tool);
             if (tool !== "select") setSelectedElement(null);
           }}
-          mapMode={mapMode}
-          onMapModeChange={handleMapModeChange}
+          darkMode={darkMode}
+          onDarkModeToggle={handleDarkModeToggle}
+          cycleLayer={cycleLayer}
+          onCycleLayer={handleCycleLayer}
+          onLayersPanelToggle={() => setLayersPanelOpen((v) => !v)}
+          layersPanelBtnRef={layersPanelBtnRef}
           onExport={exportGeoJSON}
           onImport={() => importInputRef.current?.click()}
           onClearAll={handleClearAll}
@@ -309,6 +353,7 @@ export default function MapPage() {
           elementCount={elements.length}
           onProjectsToggle={() => setProjectsOpen((v) => !v)}
           projectsBtnRef={projectsBtnRef}
+          activeLayers={activeLayers}
         />
 
         <ProjectsPanel
@@ -318,6 +363,15 @@ export default function MapPage() {
           onLoad={handleLoadProject}
           onDelete={handleDeleteProject}
           triggerRef={projectsBtnRef}
+        />
+
+        <LayersPanel
+          open={layersPanelOpen}
+          onClose={() => setLayersPanelOpen(false)}
+          activeLayers={activeLayers}
+          onToggleLayer={handleToggleLayer}
+          onOpacityChange={handleOpacityChange}
+          triggerRef={layersPanelBtnRef}
         />
       </div>
 
@@ -336,8 +390,8 @@ export default function MapPage() {
         <MapView
           elements={elements}
           activeTool={activeTool}
-          mapLayer={mapLayer}
-          darkMode={isDark}
+          activeLayers={activeLayers}
+          darkMode={darkMode}
           onElementAdd={handleElementAdd}
           onElementSelect={setSelectedElement}
           selectedElementId={selectedElement?.id || null}
@@ -367,7 +421,7 @@ export default function MapPage() {
         {activeTool !== "select" && (
           <div className="tool-hint">
             {activeTool === "marker" && "Click on the map to place a marker"}
-            {activeTool === "polygon" && "Click to draw polygon vertices, double-click to finish"}
+            {activeTool === "polygon" && "Click to add vertices · Double-click to finish polygon"}
             {activeTool === "rectangle" && "Click and drag to draw a rectangle"}
             {activeTool === "circle" && "Click and drag to draw a circle"}
             {activeTool === "measure" && "Click to add measurement points · Press E or Esc to stop"}
