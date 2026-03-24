@@ -2,7 +2,7 @@ import React, { useRef } from "react";
 import {
   MapPin, Pentagon, Square, Circle, MousePointer,
   Search, Upload, FolderOpen, Trash2,
-  Undo2, Redo2, Ruler, Layers, Moon
+  Undo2, Redo2, Ruler, Layers, Moon, Map
 } from "lucide-react";
 import { LayerId, ActiveLayer, CYCLE_LAYERS } from "@/types";
 
@@ -107,10 +107,7 @@ export default function Toolbar({
           onClick={onProjectsToggle}
           title="My Maps"
         >
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M12 2C7.589 2 4 5.589 4 10c0 5.25 7.2 12.35 7.51 12.65a.7.7 0 0 0 .98 0C12.8 22.35 20 15.25 20 10c0-4.411-3.589-8-8-8z" fill="#2563eb"/>
-            <circle cx="12" cy="10" r="3" fill="white"/>
-          </svg>
+          <Map size={20} color="#2563eb" strokeWidth={2} />
         </button>
         <span className="toolbar-logo-text">MapNotes</span>
       </div>
