@@ -4,6 +4,7 @@ export interface TileConfig {
   url: string;
   attribution: string;
   maxZoom: number;
+  maxNativeZoom?: number;
   subdomains?: string;
 }
 
@@ -36,7 +37,8 @@ export const TILE_CONFIGS: Record<LayerId | "streetDark", TileConfig> = {
   hillshade: {
     url: "https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}",
     attribution: "Esri, USGS, NGA, NASA, CGIAR, N Robinson, NCEAS, NLS, OS, NMA, Geodatastyrelsen, Rijkswaterstaat, GSA, Geoland, FGDC, HereNL and the GIS User Community",
-    maxZoom: 13,
+    maxZoom: 19,
+    maxNativeZoom: 13,
   },
   contour: {
     url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",

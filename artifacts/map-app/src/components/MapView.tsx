@@ -153,6 +153,9 @@ export default function MapView({
           subdomains: cfg.subdomains || "abc",
           opacity: layer.opacity,
         };
+        if (cfg.maxNativeZoom != null) {
+          opts.maxNativeZoom = cfg.maxNativeZoom;
+        }
         if (layer.id === "hillshade") {
           opts.pane = "hillshade-pane";
         }
