@@ -15,7 +15,7 @@ import {
   ProjectEntry,
 } from "@/lib/db";
 import { generateThumbnail } from "@/lib/thumbnail";
-import { LayerId, ActiveLayer, CYCLE_LAYERS } from "@/types";
+import { LayerId, ActiveLayer } from "@/types";
 import { DEFAULT_CONTOUR_OPACITY } from "@/lib/tiles";
 
 const VISITOR_KEY = "mapnotes_visitor_initialized";
@@ -29,7 +29,6 @@ export default function MapPage() {
   const [activeTool, setActiveTool] = useState<Tool>("select");
   const [darkMode, setDarkMode] = useState(false);
   const [activeLayers, setActiveLayers] = useState<ActiveLayer[]>([makeLayer("street")]);
-  const [cycleIdx, setCycleIdx] = useState(0);
   const [selectedElement, setSelectedElement] = useState<MapElement | null>(null);
   const [measurePoints, setMeasurePoints] = useState<[number, number][]>([]);
 
@@ -64,36 +63,22 @@ export default function MapPage() {
     getSetting<ActiveLayer[]>("activeLayers").then((v) => {
       if (Array.isArray(v) && v.length > 0) setActiveLayers(v);
     });
-    getSetting<number>("cycleIdx").then((v) => {
-      if (v != null) setCycleIdx(v);
-    });
   }, []);
 
   // Persist settings
-  const persistSettings = useCallback((dm: boolean, al: ActiveLayer[], ci: number) => {
+  const persistSettings = useCallback((dm: boolean, al: ActiveLayer[]) => {
     saveSetting("darkMode", dm);
     saveSetting("activeLayers", al);
-    saveSetting("cycleIdx", ci);
   }, []);
 
   // ---- Dark mode ----
   const handleDarkModeToggle = useCallback(() => {
     setDarkMode((d) => {
       const next = !d;
-      persistSettings(next, activeLayers, cycleIdx);
+      persistSettings(next, activeLayers);
       return next;
     });
-  }, [activeLayers, cycleIdx, persistSettings]);
-
-  // ---- Layer cycle button ----
-  const handleCycleLayer = useCallback(() => {
-    const nextIdx = (cycleIdx + 1) % CYCLE_LAYERS.length;
-    const nextId = CYCLE_LAYERS[nextIdx];
-    const newLayers = [makeLayer(nextId)];
-    setCycleIdx(nextIdx);
-    setActiveLayers(newLayers);
-    persistSettings(darkMode, newLayers, nextIdx);
-  }, [cycleIdx, darkMode, persistSettings]);
+  }, [activeLayers, persistSettings]);
 
   // ---- Layers panel: toggle layer ----
   const handleToggleLayer = useCallback((id: LayerId) => {
@@ -111,19 +96,19 @@ export default function MapPage() {
           next = [...prev, makeLayer(id)];
         }
       }
-      persistSettings(darkMode, next, cycleIdx);
+      persistSettings(darkMode, next);
       return next;
     });
-  }, [darkMode, cycleIdx, persistSettings]);
+  }, [darkMode, persistSettings]);
 
   // ---- Layers panel: opacity change ----
   const handleOpacityChange = useCallback((id: LayerId, opacity: number) => {
     setActiveLayers((prev) => {
       const next = prev.map((l) => l.id === id ? { ...l, opacity } : l);
-      persistSettings(darkMode, next, cycleIdx);
+      persistSettings(darkMode, next);
       return next;
     });
-  }, [darkMode, cycleIdx, persistSettings]);
+  }, [darkMode, persistSettings]);
 
   // ---- Layers panel: blend mode toggle ----
   const handleBlendModeToggle = useCallback((id: LayerId) => {
@@ -133,10 +118,10 @@ export default function MapPage() {
           ? { ...l, blendMode: l.blendMode === "multiply" ? ("normal" as const) : ("multiply" as const) }
           : l
       );
-      persistSettings(darkMode, next, cycleIdx);
+      persistSettings(darkMode, next);
       return next;
     });
-  }, [darkMode, cycleIdx, persistSettings]);
+  }, [darkMode, persistSettings]);
 
   // Undo / Redo
   const handleElementAdd = useCallback(async (el: MapElement) => {
@@ -301,11 +286,7 @@ export default function MapPage() {
     for (const img of project.images) await saveImage(img);
     setElements(project.elements);
     if (project.activeLayers && project.activeLayers.length > 0) {
-      const al = project.activeLayers as ActiveLayer[];
-      setActiveLayers(al);
-      const cycleId = al.find((l) => l.id !== "contour")?.id as LayerId | undefined;
-      const ci = cycleId ? CYCLE_LAYERS.indexOf(cycleId) : 0;
-      setCycleIdx(ci >= 0 ? ci : 0);
+      setActiveLayers(project.activeLayers as ActiveLayer[]);
     } else if (project.mapMode) {
       const id = project.mapMode === "satellite" ? "satellite" : project.mapMode === "topo" ? "topo" : "street";
       setActiveLayers([makeLayer(id as LayerId)]);
@@ -329,8 +310,6 @@ export default function MapPage() {
     );
   }
 
-  const cycleLayer = CYCLE_LAYERS[cycleIdx];
-
   return (
     <div className={`app-root ${darkMode ? "dark" : ""}`}>
       <div style={{ position: "relative" }}>
@@ -342,8 +321,6 @@ export default function MapPage() {
           }}
           darkMode={darkMode}
           onDarkModeToggle={handleDarkModeToggle}
-          cycleLayer={cycleLayer}
-          onCycleLayer={handleCycleLayer}
           onLayersPanelToggle={() => setLayersPanelOpen((v) => !v)}
           layersPanelBtnRef={layersPanelBtnRef}
           onExport={exportGeoJSON}

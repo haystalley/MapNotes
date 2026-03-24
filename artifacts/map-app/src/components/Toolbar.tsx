@@ -2,9 +2,9 @@ import React, { useRef } from "react";
 import {
   MapPin, Pentagon, Square, Circle, MousePointer,
   Search, Upload, FolderOpen, Trash2,
-  Undo2, Redo2, Ruler, Layers, Moon, Map
+  Undo2, Redo2, Ruler, Moon, Map
 } from "lucide-react";
-import { LayerId, ActiveLayer, CYCLE_LAYERS } from "@/types";
+import { LayerId, ActiveLayer } from "@/types";
 
 export type Tool =
   | "select"
@@ -25,8 +25,6 @@ interface ToolbarProps {
   onToolChange: (tool: Tool) => void;
   darkMode: boolean;
   onDarkModeToggle: () => void;
-  cycleLayer: LayerId;
-  onCycleLayer: () => void;
   onLayersPanelToggle: () => void;
   layersPanelBtnRef: React.RefObject<HTMLButtonElement | null>;
   onExport: () => void;
@@ -58,21 +56,11 @@ const TOOLS: { id: Tool; icon: React.ReactNode; label: string }[] = [
   { id: "measure", icon: <Ruler size={16} />, label: "Measure Distance (E)" },
 ];
 
-const CYCLE_TITLES: Record<LayerId, string> = {
-  street:    "Street Map — click for Satellite",
-  satellite: "Satellite — click for Topographic",
-  topo:      "Topographic — click for Hillshade",
-  hillshade: "Hillshade — click for Street Map",
-  contour:   "Street Map — click for Satellite",
-};
-
 export default function Toolbar({
   activeTool,
   onToolChange,
   darkMode,
   onDarkModeToggle,
-  cycleLayer,
-  onCycleLayer,
   onLayersPanelToggle,
   layersPanelBtnRef,
   onExport,
@@ -95,7 +83,6 @@ export default function Toolbar({
   activeLayers,
 }: ToolbarProps) {
   const hasDropdown = searchResults.length > 0 || searchError !== null;
-  const isCycleActive = activeLayers.length === 1 && activeLayers[0].id === cycleLayer;
 
   return (
     <div className="toolbar">
@@ -180,16 +167,6 @@ export default function Toolbar({
       </div>
 
       <div className="toolbar-divider" />
-
-      {/* Layer cycle button */}
-      <button
-        className={`tool-btn ${!isCycleActive ? "tool-btn-active" : ""}`}
-        onClick={onCycleLayer}
-        title={CYCLE_TITLES[cycleLayer] || "Cycle map layer"}
-        style={{ fontSize: 11, gap: 2 }}
-      >
-        <Layers size={15} />
-      </button>
 
       {/* Layers panel button */}
       <button
