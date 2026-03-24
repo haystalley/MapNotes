@@ -981,8 +981,7 @@ html, body, #root {
 .layers-panel {
   position: absolute;
   top: calc(100% + 4px);
-  left: 50%;
-  transform: translateX(-50%);
+  left: 0;
   width: 320px;
   max-height: 480px;
   background: var(--surface);

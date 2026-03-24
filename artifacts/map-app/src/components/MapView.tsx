@@ -95,6 +95,10 @@ export default function MapView({
   const isDraggingRef = useRef(false);
   const dragShapeRef = useRef<L.Rectangle | L.Circle | null>(null);
 
+  const measureRubberBandRef = useRef<L.Polyline | null>(null);
+  const measureLastPtRef = useRef<L.LatLng | null>(null);
+  const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // ---------- Init map ----------
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -323,6 +327,9 @@ export default function MapView({
     if (previewLayerRef.current) { map.removeLayer(previewLayerRef.current); previewLayerRef.current = null; }
     if (rubberBandRef.current) { map.removeLayer(rubberBandRef.current); rubberBandRef.current = null; }
     if (dragShapeRef.current) { map.removeLayer(dragShapeRef.current); dragShapeRef.current = null; }
+    if (measureRubberBandRef.current) { map.removeLayer(measureRubberBandRef.current); measureRubberBandRef.current = null; }
+    measureLastPtRef.current = null;
+    if (clickTimerRef.current) { clearTimeout(clickTimerRef.current); clickTimerRef.current = null; }
     drawLayer.clearLayers();
 
     map.off("click");
@@ -361,9 +368,24 @@ export default function MapView({
     if (activeTool === "measure") {
       container.style.cursor = "crosshair";
       map.dragging.enable();
+
       map.on("click", (e: L.LeafletMouseEvent) => {
+        measureLastPtRef.current = e.latlng;
         onMeasurePoint(e.latlng.lat, e.latlng.lng);
+        if (!measureRubberBandRef.current) {
+          measureRubberBandRef.current = L.polyline([e.latlng, e.latlng], {
+            color: "#f97316", dashArray: "4 4", weight: 1.5, opacity: 0.7,
+          }).addTo(map);
+        } else {
+          measureRubberBandRef.current.setLatLngs([e.latlng, e.latlng]);
+        }
       });
+
+      map.on("mousemove", (e: L.LeafletMouseEvent) => {
+        if (!measureRubberBandRef.current || !measureLastPtRef.current) return;
+        measureRubberBandRef.current.setLatLngs([measureLastPtRef.current, e.latlng]);
+      });
+
       return;
     }
 
@@ -372,8 +394,8 @@ export default function MapView({
       container.style.cursor = "crosshair";
       map.dragging.enable();
 
-      map.on("click", (e: L.LeafletMouseEvent) => {
-        polygonPointsRef.current = [...polygonPointsRef.current, [e.latlng.lat, e.latlng.lng]];
+      const commitVertex = (latlng: L.LatLng) => {
+        polygonPointsRef.current = [...polygonPointsRef.current, [latlng.lat, latlng.lng]];
         const pts = polygonPointsRef.current;
 
         if (previewLayerRef.current) map.removeLayer(previewLayerRef.current);
@@ -393,6 +415,14 @@ export default function MapView({
         rubberBandRef.current = L.polyline([lastPt, lastPt], {
           color: "#f97316", dashArray: "4 4", weight: 1.5, opacity: 0.7,
         }).addTo(map);
+      };
+
+      map.on("click", (e: L.LeafletMouseEvent) => {
+        if (clickTimerRef.current) return;
+        clickTimerRef.current = setTimeout(() => {
+          clickTimerRef.current = null;
+          commitVertex(e.latlng);
+        }, 220);
       });
 
       map.on("mousemove", (e: L.LeafletMouseEvent) => {
@@ -404,6 +434,7 @@ export default function MapView({
 
       map.on("dblclick", (e: L.LeafletMouseEvent) => {
         L.DomEvent.stopPropagation(e);
+        if (clickTimerRef.current) { clearTimeout(clickTimerRef.current); clickTimerRef.current = null; }
         const pts = polygonPointsRef.current;
         if (pts.length < 3) return;
 

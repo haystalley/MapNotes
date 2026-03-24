@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useLayoutEffect, useRef } from "react";
 import { X } from "lucide-react";
 import { LayerId, ActiveLayer, LAYER_LABELS, LAYER_DESCRIPTIONS, LAYER_IS_OVERLAY, LAYER_SUPPORTS_BLEND } from "@/types";
 
@@ -51,6 +51,19 @@ export default function LayersPanel({
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [open, onClose, triggerRef]);
+
+  useLayoutEffect(() => {
+    if (!open || !panelRef.current || !triggerRef.current) return;
+    const btn = triggerRef.current.getBoundingClientRect();
+    const parent = panelRef.current.offsetParent as HTMLElement | null;
+    if (!parent) return;
+    const parentRect = parent.getBoundingClientRect();
+    const panelWidth = 320;
+    let left = btn.left - parentRect.left;
+    const maxLeft = parentRect.width - panelWidth - 8;
+    left = Math.max(8, Math.min(left, maxLeft));
+    panelRef.current.style.left = `${left}px`;
+  }, [open, triggerRef]);
 
   if (!open) return null;
 
