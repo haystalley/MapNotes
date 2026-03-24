@@ -1,5 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
   <rect width="32" height="32" rx="7" fill="#2563eb"/>
-  <path d="M16 4C10.477 4 6 8.477 6 14c0 7.5 9.15 13.6 9.52 13.85a.8.8 0 0 0 .96 0C16.85 27.6 26 21.5 26 14c0-5.523-4.477-10-10-10z" fill="white"/>
-  <circle cx="16" cy="14" r="3.8" fill="#2563eb"/>
+  <!-- Folded map icon (scaled Lucide Map, 24→22px, offset 5,5) -->
+  <g transform="translate(5,5) scale(0.917)" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <polyline points="3 6 5 1 11 3 13 1 19 3 21 1 21 18 19 23 13 21 11 23 5 21 3 18 3 6"/>
+    <line x1="11" y1="3" x2="11" y2="23"/>
+    <line x1="13" y1="1" x2="13" y2="21"/>
+  </g>
 </svg>
