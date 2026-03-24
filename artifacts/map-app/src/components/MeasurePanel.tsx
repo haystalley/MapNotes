@@ -1,13 +1,14 @@
 import React from "react";
 import { Ruler, X } from "lucide-react";
-import { measureDistance, formatDistance } from "@/lib/geo";
+import { measureDistance, formatDistance, DistanceUnit } from "@/lib/geo";
 
 interface MeasurePanelProps {
   points: [number, number][];
   onClear: () => void;
+  unit: DistanceUnit;
 }
 
-export default function MeasurePanel({ points, onClear }: MeasurePanelProps) {
+export default function MeasurePanel({ points, onClear, unit }: MeasurePanelProps) {
   if (points.length === 0) return null;
 
   const isClosed =
@@ -39,7 +40,7 @@ export default function MeasurePanel({ points, onClear }: MeasurePanelProps) {
         </div>
         <div className="measure-stat">
           <span className="measure-label">{isClosed ? "Perimeter" : "Total Distance"}</span>
-          <span className="measure-value">{formatDistance(totalDistance)}</span>
+          <span className="measure-value">{formatDistance(totalDistance, unit)}</span>
         </div>
         {!isClosed && points.length >= 2 && (
           <div className="measure-stat">
@@ -51,7 +52,8 @@ export default function MeasurePanel({ points, onClear }: MeasurePanelProps) {
                   points[points.length - 2][1],
                   points[points.length - 1][0],
                   points[points.length - 1][1]
-                )
+                ),
+                unit
               )}
             </span>
           </div>

@@ -84,9 +84,23 @@ export function measureDistance(
   return R * c;
 }
 
-export function formatDistance(meters: number): string {
-  if (meters < 1000) return `${Math.round(meters)} m`;
-  return `${(meters / 1000).toFixed(2)} km`;
+export type DistanceUnit = "km" | "m" | "mi" | "ft";
+
+export function formatDistance(meters: number, unit: DistanceUnit = "km"): string {
+  switch (unit) {
+    case "m":
+      return `${Math.round(meters)} m`;
+    case "km":
+      if (meters < 1000) return `${Math.round(meters)} m`;
+      return `${(meters / 1000).toFixed(2)} km`;
+    case "mi": {
+      const miles = meters / 1609.344;
+      if (miles < 0.1) return `${Math.round(meters * 3.28084)} ft`;
+      return `${miles.toFixed(2)} mi`;
+    }
+    case "ft":
+      return `${Math.round(meters * 3.28084)} ft`;
+  }
 }
 
 export function formatArea(sqMeters: number): string {

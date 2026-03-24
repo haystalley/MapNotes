@@ -4,6 +4,7 @@ import Toolbar, { Tool, SearchResult } from "@/components/Toolbar";
 import ElementPopup from "@/components/ElementPopup";
 import MeasurePanel from "@/components/MeasurePanel";
 import ProjectsPanel from "@/components/ProjectsPanel";
+import SettingsModal, { DistanceUnit } from "@/components/SettingsModal";
 import LayersPanel from "@/components/LayersPanel";
 import { useMapData } from "@/hooks/useMapData";
 import { MapElement } from "@/lib/db";
@@ -47,6 +48,8 @@ export default function MapPage() {
   const projectsBtnRef = useRef<HTMLButtonElement>(null);
   const [layersPanelOpen, setLayersPanelOpen] = useState(false);
   const layersPanelBtnRef = useRef<HTMLButtonElement>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [distanceUnit, setDistanceUnit] = useState<DistanceUnit>("km");
 
   // ---- Session / first-visit detection ----
   useEffect(() => {
@@ -63,6 +66,14 @@ export default function MapPage() {
     getSetting<ActiveLayer[]>("activeLayers").then((v) => {
       if (Array.isArray(v) && v.length > 0) setActiveLayers(v);
     });
+    getSetting<DistanceUnit>("distanceUnit").then((v) => {
+      if (v) setDistanceUnit(v);
+    });
+  }, []);
+
+  const handleDistanceUnitChange = useCallback((unit: DistanceUnit) => {
+    setDistanceUnit(unit);
+    saveSetting("distanceUnit", unit);
   }, []);
 
   // Persist settings
@@ -312,6 +323,12 @@ export default function MapPage() {
 
   return (
     <div className={`app-root ${darkMode ? "dark" : ""}`}>
+      <SettingsModal
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        distanceUnit={distanceUnit}
+        onDistanceUnitChange={handleDistanceUnitChange}
+      />
       <div style={{ position: "relative" }}>
         <Toolbar
           activeTool={activeTool}
@@ -353,6 +370,7 @@ export default function MapPage() {
           onLoad={handleLoadProject}
           onDelete={handleDeleteProject}
           triggerRef={projectsBtnRef}
+          onOpenSettings={() => setSettingsOpen(true)}
         />
 
         <LayersPanel
@@ -406,7 +424,7 @@ export default function MapPage() {
 
         {activeTool === "measure" && (
           <div className="measure-overlay">
-            <MeasurePanel points={measurePoints} onClear={handleMeasureClear} />
+            <MeasurePanel points={measurePoints} onClear={handleMeasureClear} unit={distanceUnit} />
           </div>
         )}
 

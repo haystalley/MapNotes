@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { X, Trash2, FolderOpen, Plus } from "lucide-react";
+import { X, Trash2, FolderOpen, Plus, Settings } from "lucide-react";
 import { ProjectEntry, getAllProjects, deleteProject } from "@/lib/db";
 
 interface ProjectsPanelProps {
@@ -9,6 +9,7 @@ interface ProjectsPanelProps {
   onLoad: (project: ProjectEntry) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
   triggerRef: React.RefObject<HTMLButtonElement | null>;
+  onOpenSettings: () => void;
 }
 
 function formatDate(ts: number) {
@@ -23,6 +24,7 @@ export default function ProjectsPanel({
   onLoad,
   onDelete,
   triggerRef,
+  onOpenSettings,
 }: ProjectsPanelProps) {
   const [projects, setProjects] = useState<ProjectEntry[]>([]);
   const [saving, setSaving] = useState(false);
@@ -92,9 +94,18 @@ export default function ProjectsPanel({
     <div className="projects-panel" ref={panelRef}>
       <div className="projects-header">
         <span className="projects-title">My Maps</span>
-        <button className="btn-icon-sm" onClick={onClose} title="Close">
-          <X size={14} />
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <button
+            className="btn-icon-sm"
+            onClick={() => { onClose(); onOpenSettings(); }}
+            title="Settings"
+          >
+            <Settings size={14} />
+          </button>
+          <button className="btn-icon-sm" onClick={onClose} title="Close">
+            <X size={14} />
+          </button>
+        </div>
       </div>
 
       <div className="projects-save-area">
