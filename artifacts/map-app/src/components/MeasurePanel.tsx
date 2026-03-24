@@ -10,6 +10,11 @@ interface MeasurePanelProps {
 export default function MeasurePanel({ points, onClear }: MeasurePanelProps) {
   if (points.length === 0) return null;
 
+  const isClosed =
+    points.length >= 3 &&
+    points[0][0] === points[points.length - 1][0] &&
+    points[0][1] === points[points.length - 1][1];
+
   let totalDistance = 0;
   for (let i = 1; i < points.length; i++) {
     totalDistance += measureDistance(
@@ -30,13 +35,13 @@ export default function MeasurePanel({ points, onClear }: MeasurePanelProps) {
       <div className="measure-body">
         <div className="measure-stat">
           <span className="measure-label">Points</span>
-          <span className="measure-value">{points.length}</span>
+          <span className="measure-value">{isClosed ? points.length - 1 : points.length}</span>
         </div>
         <div className="measure-stat">
-          <span className="measure-label">Total Distance</span>
+          <span className="measure-label">{isClosed ? "Perimeter" : "Total Distance"}</span>
           <span className="measure-value">{formatDistance(totalDistance)}</span>
         </div>
-        {points.length >= 2 && (
+        {!isClosed && points.length >= 2 && (
           <div className="measure-stat">
             <span className="measure-label">Last Segment</span>
             <span className="measure-value">
@@ -52,7 +57,13 @@ export default function MeasurePanel({ points, onClear }: MeasurePanelProps) {
           </div>
         )}
       </div>
-      <p className="measure-hint">Click on the map to add measurement points</p>
+      <p className="measure-hint">
+        {isClosed
+          ? "Loop closed — click map to start a new measurement"
+          : points.length === 0
+          ? "Click map to start measuring"
+          : "Double-click to finish · click near start point to close loop"}
+      </p>
     </div>
   );
 }

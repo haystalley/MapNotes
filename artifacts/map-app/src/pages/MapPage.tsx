@@ -388,6 +388,7 @@ export default function MapPage() {
           selectedElementId={selectedElement?.id || null}
           measurePoints={measurePoints}
           onMeasurePoint={handleMeasurePoint}
+          onMeasureClear={handleMeasureClear}
           searchLocation={searchLocation}
           onSearchLocationConsumed={() => setSearchLocation(null)}
         />

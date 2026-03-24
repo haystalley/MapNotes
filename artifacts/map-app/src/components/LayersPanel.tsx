@@ -2,7 +2,7 @@ import React, { useEffect, useLayoutEffect, useRef } from "react";
 import { X } from "lucide-react";
 import { LayerId, ActiveLayer, LAYER_LABELS, LAYER_DESCRIPTIONS, LAYER_IS_OVERLAY, LAYER_SUPPORTS_BLEND } from "@/types";
 
-const ALL_LAYERS: LayerId[] = ["street", "satellite", "topo", "hillshade", "contour"];
+const ALL_LAYERS: LayerId[] = ["street", "satellite", "topo", "contour", "hillshade"];
 
 interface LayersPanelProps {
   open: boolean;

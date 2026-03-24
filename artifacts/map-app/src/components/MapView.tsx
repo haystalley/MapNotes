@@ -54,6 +54,7 @@ interface MapViewProps {
   selectedElementId: string | null;
   measurePoints: [number, number][];
   onMeasurePoint: (lat: number, lng: number) => void;
+  onMeasureClear: () => void;
   searchLocation: { lat: number; lng: number } | null;
   onSearchLocationConsumed: () => void;
 }
@@ -75,6 +76,7 @@ export default function MapView({
   selectedElementId,
   measurePoints,
   onMeasurePoint,
+  onMeasureClear,
   searchLocation,
   onSearchLocationConsumed,
 }: MapViewProps) {
@@ -97,6 +99,8 @@ export default function MapView({
 
   const measureRubberBandRef = useRef<L.Polyline | null>(null);
   const measureLastPtRef = useRef<L.LatLng | null>(null);
+  const measurePtsRef = useRef<[number, number][]>([]);
+  const measureCompletedRef = useRef(false);
   const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ---------- Init map ----------
@@ -329,6 +333,8 @@ export default function MapView({
     if (dragShapeRef.current) { map.removeLayer(dragShapeRef.current); dragShapeRef.current = null; }
     if (measureRubberBandRef.current) { map.removeLayer(measureRubberBandRef.current); measureRubberBandRef.current = null; }
     measureLastPtRef.current = null;
+    measurePtsRef.current = [];
+    measureCompletedRef.current = false;
     if (clickTimerRef.current) { clearTimeout(clickTimerRef.current); clickTimerRef.current = null; }
     drawLayer.clearLayers();
 
@@ -369,19 +375,68 @@ export default function MapView({
       container.style.cursor = "crosshair";
       map.dragging.enable();
 
-      map.on("click", (e: L.LeafletMouseEvent) => {
-        measureLastPtRef.current = e.latlng;
-        onMeasurePoint(e.latlng.lat, e.latlng.lng);
-        if (!measureRubberBandRef.current) {
-          measureRubberBandRef.current = L.polyline([e.latlng, e.latlng], {
-            color: "#f97316", dashArray: "4 4", weight: 1.5, opacity: 0.7,
-          }).addTo(map);
-        } else {
-          measureRubberBandRef.current.setLatLngs([e.latlng, e.latlng]);
+      const finishMeasure = () => {
+        measureCompletedRef.current = true;
+        if (measureRubberBandRef.current) {
+          map.removeLayer(measureRubberBandRef.current);
+          measureRubberBandRef.current = null;
         }
+        container.style.cursor = "default";
+      };
+
+      map.on("click", (e: L.LeafletMouseEvent) => {
+        if (clickTimerRef.current) return;
+
+        clickTimerRef.current = setTimeout(() => {
+          clickTimerRef.current = null;
+
+          if (measureCompletedRef.current) {
+            onMeasureClear();
+            measurePtsRef.current = [];
+            measureCompletedRef.current = false;
+            measureLastPtRef.current = null;
+            container.style.cursor = "crosshair";
+          }
+
+          const pts = measurePtsRef.current;
+
+          if (pts.length >= 2) {
+            const firstLatLng = L.latLng(pts[0][0], pts[0][1]);
+            const firstPx = map.latLngToContainerPoint(firstLatLng);
+            const curPx = map.latLngToContainerPoint(e.latlng);
+            const dx = firstPx.x - curPx.x;
+            const dy = firstPx.y - curPx.y;
+            if (Math.sqrt(dx * dx + dy * dy) <= 20) {
+              onMeasurePoint(pts[0][0], pts[0][1]);
+              measurePtsRef.current = [...pts, pts[0]];
+              finishMeasure();
+              return;
+            }
+          }
+
+          measurePtsRef.current = [...pts, [e.latlng.lat, e.latlng.lng]];
+          measureLastPtRef.current = e.latlng;
+          onMeasurePoint(e.latlng.lat, e.latlng.lng);
+
+          if (!measureRubberBandRef.current) {
+            measureRubberBandRef.current = L.polyline([e.latlng, e.latlng], {
+              color: "#f97316", dashArray: "4 4", weight: 1.5, opacity: 0.7,
+            }).addTo(map);
+          } else {
+            measureRubberBandRef.current.setLatLngs([e.latlng, e.latlng]);
+          }
+        }, 220);
+      });
+
+      map.on("dblclick", (e: L.LeafletMouseEvent) => {
+        L.DomEvent.stopPropagation(e);
+        if (clickTimerRef.current) { clearTimeout(clickTimerRef.current); clickTimerRef.current = null; }
+        if (measurePtsRef.current.length < 1) return;
+        finishMeasure();
       });
 
       map.on("mousemove", (e: L.LeafletMouseEvent) => {
+        if (measureCompletedRef.current) return;
         if (!measureRubberBandRef.current || !measureLastPtRef.current) return;
         measureRubberBandRef.current.setLatLngs([measureLastPtRef.current, e.latlng]);
       });
