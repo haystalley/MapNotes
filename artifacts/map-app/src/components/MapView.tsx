@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useCallback } from "react";
+import React, { useEffect, useRef } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { MapElement, MapMarker, MapShape } from "@/lib/db";
@@ -107,6 +107,11 @@ export default function MapView({
 
     L.control.zoom({ position: "bottomright" }).addTo(map);
 
+    // Create a dedicated pane for hillshade so blend mode can be scoped to it
+    map.createPane("hillshade-pane");
+    const hillshadePaneEl = map.getPane("hillshade-pane");
+    if (hillshadePaneEl) hillshadePaneEl.style.zIndex = "210";
+
     const measureLayer = new L.FeatureGroup().addTo(map);
     const drawLayer = new L.FeatureGroup().addTo(map);
 
@@ -137,28 +142,41 @@ export default function MapView({
       }
     }
 
-    // Separate base and overlay layers so overlays are always on top
-    const baseLayers = activeLayers.filter((l) => l.id !== "contour");
-    const overlayLayers = activeLayers.filter((l) => l.id === "contour");
-
     const addOrUpdate = (layer: ActiveLayer) => {
       const cfg = getTileConfig(layer.id, darkMode);
       if (current.has(layer.id)) {
         current.get(layer.id)!.setOpacity(layer.opacity);
       } else {
-        const tl = L.tileLayer(cfg.url, {
+        const opts: L.TileLayerOptions = {
           attribution: cfg.attribution,
           maxZoom: cfg.maxZoom,
           subdomains: cfg.subdomains || "abc",
           opacity: layer.opacity,
-        }).addTo(map);
+        };
+        if (layer.id === "hillshade") {
+          opts.pane = "hillshade-pane";
+        }
+        const tl = L.tileLayer(cfg.url, opts).addTo(map);
         current.set(layer.id, tl);
       }
     };
 
-    for (const layer of baseLayers) addOrUpdate(layer);
-    for (const layer of overlayLayers) addOrUpdate(layer);
+    for (const layer of activeLayers) addOrUpdate(layer);
   }, [activeLayers, darkMode]);
+
+  // ---------- Hillshade blend mode ----------
+  useEffect(() => {
+    if (!mapRef.current) return;
+    const map = mapRef.current;
+    const hillshadeLayer = activeLayers.find((l) => l.id === "hillshade");
+    const paneEl = map.getPane("hillshade-pane");
+    if (!paneEl) return;
+    if (hillshadeLayer?.blendMode === "multiply") {
+      (paneEl as HTMLElement).style.mixBlendMode = "multiply";
+    } else {
+      (paneEl as HTMLElement).style.mixBlendMode = "";
+    }
+  }, [activeLayers]);
 
   // When dark mode changes, rebuild existing street tile if active
   useEffect(() => {
@@ -355,7 +373,6 @@ export default function MapView({
         polygonPointsRef.current = [...polygonPointsRef.current, [e.latlng.lat, e.latlng.lng]];
         const pts = polygonPointsRef.current;
 
-        // Update committed preview (the solid polygon outline so far)
         if (previewLayerRef.current) map.removeLayer(previewLayerRef.current);
         if (pts.length === 1) {
           previewLayerRef.current = L.polyline(pts as L.LatLngTuple[], {
@@ -368,7 +385,6 @@ export default function MapView({
           }).addTo(map);
         }
 
-        // Reset rubber band
         if (rubberBandRef.current) { map.removeLayer(rubberBandRef.current); rubberBandRef.current = null; }
         const lastPt = pts[pts.length - 1] as L.LatLngTuple;
         rubberBandRef.current = L.polyline([lastPt, lastPt], {

@@ -1183,6 +1183,43 @@ html, body, #root {
   color: var(--text-muted-dark);
 }
 
+.layer-blend-row {
+  display: flex;
+  align-items: center;
+  padding-left: 22px;
+  margin-top: 4px;
+}
+
+.layer-blend-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+}
+
+.layer-blend-text {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.dark .layer-blend-text {
+  color: var(--text-dark);
+}
+
+.layer-blend-hint {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.dark .layer-blend-hint {
+  color: var(--text-muted-dark);
+}
+
 /* ============================================================
    PROJECTS PANEL
    ============================================================ */

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from "react";
 import { X } from "lucide-react";
-import { LayerId, ActiveLayer, LAYER_LABELS, LAYER_DESCRIPTIONS, LAYER_IS_OVERLAY } from "@/types";
+import { LayerId, ActiveLayer, LAYER_LABELS, LAYER_DESCRIPTIONS, LAYER_IS_OVERLAY, LAYER_SUPPORTS_BLEND } from "@/types";
 
 const ALL_LAYERS: LayerId[] = ["street", "satellite", "topo", "hillshade", "contour"];
 
@@ -10,6 +10,7 @@ interface LayersPanelProps {
   activeLayers: ActiveLayer[];
   onToggleLayer: (id: LayerId) => void;
   onOpacityChange: (id: LayerId, opacity: number) => void;
+  onBlendModeToggle: (id: LayerId) => void;
   triggerRef: React.RefObject<HTMLButtonElement | null>;
 }
 
@@ -19,7 +20,7 @@ function LayerIcon({ id }: { id: LayerId }) {
     satellite: "🛰",
     topo: "⛰",
     hillshade: "🏔",
-    contour: "〰",
+    contour: "🗻",
   };
   return <span style={{ fontSize: 16 }}>{icons[id]}</span>;
 }
@@ -30,6 +31,7 @@ export default function LayersPanel({
   activeLayers,
   onToggleLayer,
   onOpacityChange,
+  onBlendModeToggle,
   triggerRef,
 }: LayersPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null);
@@ -73,6 +75,8 @@ export default function LayersPanel({
           const isActive = activeIds.has(id);
           const activeLayer = activeLayers.find((l) => l.id === id);
           const isOverlay = LAYER_IS_OVERLAY[id];
+          const supportsBlend = LAYER_SUPPORTS_BLEND[id];
+          const isMultiply = activeLayer?.blendMode === "multiply";
 
           return (
             <div
@@ -101,23 +105,44 @@ export default function LayersPanel({
               </div>
 
               {isActive && activeLayer && (
-                <div className="layer-opacity-row">
-                  <span className="layer-opacity-label">Opacity</span>
-                  <input
-                    type="range"
-                    min={5}
-                    max={100}
-                    value={Math.round(activeLayer.opacity * 100)}
-                    onChange={(e) =>
-                      onOpacityChange(id, parseInt(e.target.value) / 100)
-                    }
-                    className="layer-opacity-slider"
-                    title={`${Math.round(activeLayer.opacity * 100)}%`}
-                  />
-                  <span className="layer-opacity-value">
-                    {Math.round(activeLayer.opacity * 100)}%
-                  </span>
-                </div>
+                <>
+                  <div className="layer-opacity-row">
+                    <span className="layer-opacity-label">Opacity</span>
+                    <input
+                      type="range"
+                      min={5}
+                      max={100}
+                      value={Math.round(activeLayer.opacity * 100)}
+                      onChange={(e) =>
+                        onOpacityChange(id, parseInt(e.target.value) / 100)
+                      }
+                      className="layer-opacity-slider"
+                      title={`${Math.round(activeLayer.opacity * 100)}%`}
+                    />
+                    <span className="layer-opacity-value">
+                      {Math.round(activeLayer.opacity * 100)}%
+                    </span>
+                  </div>
+
+                  {supportsBlend && (
+                    <div className="layer-blend-row">
+                      <label className="layer-blend-label">
+                        <input
+                          type="checkbox"
+                          className="layer-checkbox"
+                          checked={isMultiply}
+                          onChange={() => onBlendModeToggle(id)}
+                        />
+                        <span className="layer-blend-text">
+                          Multiply blend
+                          <span className="layer-blend-hint">
+                            {isMultiply ? "— white background hidden" : "— hides white background when overlaid"}
+                          </span>
+                        </span>
+                      </label>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           );

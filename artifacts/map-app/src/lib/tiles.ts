@@ -9,6 +9,7 @@ export interface TileConfig {
 
 const OSM_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 const TOPO_ATTR = `Map data: ${OSM_ATTR}, <a href="http://viewfinderpanoramas.org">SRTM</a> | Map style: &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/">CC-BY-SA</a>)`;
+const ESRI_ATTR = "Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ, TomTom, Intermap, iPC, USGS, FAO, NPS, NRCAN, GeoBase, Kadaster NL, Ordnance Survey, Esri Japan, METI, Esri China (Hong Kong), and the GIS User Community";
 
 export const TILE_CONFIGS: Record<LayerId | "streetDark", TileConfig> = {
   street: {
@@ -38,10 +39,10 @@ export const TILE_CONFIGS: Record<LayerId | "streetDark", TileConfig> = {
     maxZoom: 13,
   },
   contour: {
-    url: "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
-    attribution: TOPO_ATTR,
-    maxZoom: 17,
+    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
+    attribution: ESRI_ATTR,
+    maxZoom: 19,
   },
 };
 
-export const DEFAULT_CONTOUR_OPACITY = 0.45;
+export const DEFAULT_CONTOUR_OPACITY = 1;

@@ -125,6 +125,19 @@ export default function MapPage() {
     });
   }, [darkMode, cycleIdx, persistSettings]);
 
+  // ---- Layers panel: blend mode toggle ----
+  const handleBlendModeToggle = useCallback((id: LayerId) => {
+    setActiveLayers((prev) => {
+      const next = prev.map((l) =>
+        l.id === id
+          ? { ...l, blendMode: l.blendMode === "multiply" ? ("normal" as const) : ("multiply" as const) }
+          : l
+      );
+      persistSettings(darkMode, next, cycleIdx);
+      return next;
+    });
+  }, [darkMode, cycleIdx, persistSettings]);
+
   // Undo / Redo
   const handleElementAdd = useCallback(async (el: MapElement) => {
     setHistory((h) => [...h.slice(-30), [...elements]]);
@@ -371,6 +384,7 @@ export default function MapPage() {
           activeLayers={activeLayers}
           onToggleLayer={handleToggleLayer}
           onOpacityChange={handleOpacityChange}
+          onBlendModeToggle={handleBlendModeToggle}
           triggerRef={layersPanelBtnRef}
         />
       </div>
